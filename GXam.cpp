@@ -1,6 +1,5 @@
 #include "GXam.h"
 #include <ctype.h>
-#include "kstring.h"
 
 //auxiliary functions for low level BAM record creation
 uint8_t* realloc_bdata(bam1_t *b, int size) {
@@ -80,6 +79,7 @@ GXamRecord::GXamRecord(const char* qname, int32_t samflags, int32_t g_tid,
 }
 
  void GXamRecord::set_cigar(const char* cigar) {
+    // ---- see sam_parse1() in htslib/sam.c for details
    //requires b->core.pos and b->core.flag to have been set properly PRIOR to this call
    int doff=b->core.l_qname;
    uint8_t* after_cigar=NULL;
@@ -123,10 +123,10 @@ GXamRecord::GXamRecord(const char* qname, int32_t samflags, int32_t g_tid,
             else if (op == 'P') op = BAM_CPAD;
             else GError("Error: invalid CIGAR operation (%s)\n",cigar);
             s = t + 1;
-            bam1_cigar(b)[i] = x << BAM_CIGAR_SHIFT | op;
+            bam_get_cigar(b)[i] = x << BAM_CIGAR_SHIFT | op;
         }
         if (*s) GError("Error: unmatched CIGAR operation (%s)\n",cigar);
-        b->core.bin = bam_reg2bin(b->core.pos, bam_calend(&b->core, bam1_cigar(b)));
+        b->core.bin = bam_reg2bin(b->core.pos, bam_calend(&b->core, bam_get_cigar(b)));
     } else {//no CIGAR string given
         if (!(b->core.flag&BAM_FUNMAP)) {
             GMessage("Warning: mapped sequence without CIGAR (%s)\n", (char*)b->data);
@@ -138,26 +138,29 @@ GXamRecord::GXamRecord(const char* qname, int32_t samflags, int32_t g_tid,
    } //set_cigar()
 
  void GXamRecord::add_sequence(const char* qseq, int slen) {
-   //must be called AFTER set_cigar (cannot replace existing sequence for now)
+    // ---- see sam_parse1() in htslib/sam.c for details
+    //must be called AFTER set_cigar (cannot replace existing sequence for now)
    if (qseq==NULL) return; //should we ever care about this?
    if (slen<0) slen=strlen(qseq);
    int doff = b->core.l_qname + b->core.n_cigar * 4;
    if (strcmp(qseq, "*")!=0) {
        b->core.l_qseq=slen;
-       if (b->core.n_cigar && b->core.l_qseq != (int32_t)bam_cigar2qlen(&b->core, bam1_cigar(b)))
+       hts_pos_t ql = bam_cigar2qlen(b->core.n_cigar, bam_get_cigar(b));
+       if (b->core.n_cigar && b->core.l_qseq != ql)
            GError("Error: CIGAR and sequence length are inconsistent!(%s)\n",
                   qseq);
-       uint8_t* p = (uint8_t*)realloc_bdata(b, doff + (b->core.l_qseq+1)/2 + b->core.l_qseq) + doff;
-       //also allocated quals memory
-       memset(p, 0, (b->core.l_qseq+1)/2);
+       unsigned int lqs=(b->core.l_qseq+1) >> 1;
+       uint8_t* p = (uint8_t*)realloc_bdata(b, doff + lqs + b->core.l_qseq) + doff;
+       //-- also allocated quals memory!
+       memset(p, 0, lqs);
        for (int i = 0; i < b->core.l_qseq; ++i)
-           p[i/2] |= bam_nt16_table[(int)qseq[i]] << 4*(1-i%2);
+           p[i>>1] |= seq_nt16_table[(int)qseq[i]] << 4*(1-i%2);
        } else b->core.l_qseq = 0;
    }
 
  void GXamRecord::add_quals(const char* quals) {
-   //requires core.l_qseq already set
-   //and must be called AFTER add_sequence(), which also allocates the memory for quals
+   //requires core.l_qseq already set to the length of quals
+   //must be called AFTER add_sequence(), which also allocates the memory for quals
    uint8_t* p = b->data+(b->core.l_qname + b->core.n_cigar * 4 + (b->core.l_qseq+1)/2);
    if (quals==NULL || strcmp(quals, "*") == 0) {
       for (int i=0;i < b->core.l_qseq; i++) p[i] = 0xff;
@@ -167,7 +170,8 @@ GXamRecord::GXamRecord(const char* qname, int32_t samflags, int32_t g_tid,
    }
 
  void GXamRecord::add_aux(const char* str) {
-     //requires: being called AFTER add_quals()
+     //requires: being called AFTER add_quals() for built-from-scratch records
+	 //--check the "// aux" section in sam_parse1() htslib/sam.c
      int strl=strlen(str);
      //int doff = b->core.l_qname + b->core.n_cigar*4 + (b->core.l_qseq+1)/2 + b->core.l_qseq + b->l_aux;
      //int doff0=doff;
@@ -244,8 +248,15 @@ GXamRecord::GXamRecord(const char* qname, int32_t samflags, int32_t g_tid,
              memcpy(abuf, str + 5, strl - 5);
              abuf[strl-5] = 0;
              alen=strl-4;
-             } else parse_error("unrecognized aux type");
-  this->add_aux(tag, atype, alen, adata);
+         }
+         else if (atype == 'B') { //FIXME
+            // -- see sam_parse_B_vals() function in htslib/sam.c
+            //Integer or numeric array -- too messy to parse again here
+            GMessage("Warning: sorry, B tags not supported yet.\n");
+         }
+         else parse_error("unrecognized aux type");
+  //this->add_aux(tag, atype, alen, adata);
+  bam_aux_append(b, tag, atype, alen, adata);
   }//add_aux()
 
 int interpret_CIGAR(char cop, int cl, int aln_start) {
@@ -320,7 +331,7 @@ switch (cop) {
 void GXamRecord::setupCoordinates() {
 	const bam1_core_t *c = &b->core;
 	if (c->flag & BAM_FUNMAP) return; /* skip unmapped reads */
-	uint32_t *p = bam1_cigar(b);
+	uint32_t *p = bam_get_cigar(b);
 	//--- prevent alignment error here (reported by UB-sanitazer):
 	uint32_t *cigar= new uint32_t[c->n_cigar];
 	memcpy(cigar, p, c->n_cigar * sizeof(uint32_t));
@@ -406,20 +417,20 @@ void GXamRecord::setupCoordinates() {
  }
 
  char* GXamRecord::sequence() { //user must free this after use
-   char *s = (char*)bam1_seq(b);
+   char *s = (char*)bam_get_seq(b);
    char* qseq=NULL;
    GMALLOC(qseq, (b->core.l_qseq+1));
    int i;
    for (i=0;i<(b->core.l_qseq);i++) {
-     int8_t v = bam1_seqi(s,i);
-     qseq[i] = bam_nt16_rev_table[v];
+     int8_t v = bam_seqi(s,i);
+     qseq[i] = seq_nt16_str[v];
      }
    qseq[i] = 0;
    return qseq;
    }
 
  char* GXamRecord::qualities() {//user must free this after use
-   char *qual  = (char*)bam1_qual(b);
+   char *qual  = (char*)bam_get_qual(b);
    char* qv=NULL;
    GMALLOC(qv, (b->core.l_qseq+1) );
    int i;
@@ -431,13 +442,12 @@ void GXamRecord::setupCoordinates() {
    }
 
  char* GXamRecord::cigar() { //returns text version of the CIGAR string; must be freed by user
-   kstring_t str;
-   str.l = str.m = 0; str.s = 0;
+   kstring_t str = KS_INITIALIZE;
    if (b->core.n_cigar == 0) kputc('*', &str);
     else {
       for (int i = 0; i < b->core.n_cigar; ++i) {
-         kputw(bam1_cigar(b)[i]>>BAM_CIGAR_SHIFT, &str);
-         kputc("MIDNSHP=X"[bam1_cigar(b)[i]&BAM_CIGAR_MASK], &str);
+         kputw(bam_get_cigar(b)[i]>>BAM_CIGAR_SHIFT, &str);
+         kputc("MIDNSHP=X"[bam_get_cigar(b)[i]&BAM_CIGAR_MASK], &str);
          }
       }
    return str.s;

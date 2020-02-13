@@ -1,6 +1,9 @@
 GCLDIR := ../gclib
-BAM_INCDIR := ./samtools-0.1.18
-BAM_LIBDIR := ./samtools-0.1.18
+#BAM_INCDIR := ./samtools-0.1.18
+#BAM_LIBDIR := ./samtools-0.1.18
+BAM_INCDIR := ./htslib
+BAM_LIBDIR := ./htslib
+
 
 SEARCHDIRS := -I. -I${GCLDIR} -I${BAM_INCDIR}
 
