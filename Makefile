@@ -1,11 +1,8 @@
 GCLDIR := ../gclib
-#BAM_INCDIR := ./samtools-0.1.18
-#BAM_LIBDIR := ./samtools-0.1.18
-BAM_INCDIR := ./htslib
-BAM_LIBDIR := ./htslib
+HTSLIB := ../htslib
+LIBDEFLATE := /ccb/sw/lib/libdeflate.a
 
-
-SEARCHDIRS := -I. -I${GCLDIR} -I${BAM_INCDIR}
+SEARCHDIRS := -I. -I${GCLDIR} -I${HTSLIB}
 
 SYSTYPE :=     $(shell uname)
 
@@ -26,10 +23,10 @@ BASEFLAGS  := -Wall -Wextra ${SEARCHDIRS} $(MARCH) \
 
 ifeq ($(findstring release,$(MAKECMDGOALS)),)
   CFLAGS := -O2 -DNDEBUG $(BASEFLAGS)
-  LDFLAGS := -L${BAM_LIBDIR}
+  LDFLAGS := -L${HTSLIB}
 else
   CFLAGS := -g -DDEBUG -DGDEBUG $(BASEFLAGS)
-  LDFLAGS := -g -L${BAM_LIBDIR}
+  LDFLAGS := -g -L${HTSLIB}
 endif
 
 %.o : %.cpp
@@ -38,7 +35,7 @@ endif
 # C/C++ linker
 
 LINKER  := g++
-LIBS := -lz -lbam
+LIBS := ${HTSLIB}/libhts.a ${LIBDEFLATE} -llzma -lbz2 -lz -lm -lcurl -lcrypto -lpthread
 OBJS := ${GCLDIR}/GBase.o ${GCLDIR}/GArgs.o ${GCLDIR}/GStr.o \
         GXam.o
  
