@@ -233,12 +233,12 @@ class GXamReader {
     }
 
    int64_t fpos() { //ftell
-     if (hts_file->is_bgzf) { // bam_ptell() in sam.c
+     if (hts_file->is_bgzf) { // bam_ptell() from sam.c
     	    if (hts_file->fp.bgzf==NULL)
     	        return -1L;
     	    return bgzf_tell(hts_file->fp.bgzf);
      }
-     else if (hts_file->is_cram) { // cram_ptell() in sam.c
+     else if (hts_file->is_cram) { // cram_ptell() from sam.c
     	    cram_container *c;
     	    cram_slice *s;
     	    int64_t ret = -1L;
@@ -267,10 +267,10 @@ class GXamReader {
   	 else
   		 return (int64_t)gzseek(((samtools_tamFile_t*)(hts_file->x.tamr))->fp, offs, SEEK_SET);
   	*/
-    if (hts_file->is_bgzf) { //bam_pseek
+    if (hts_file->is_bgzf) { //bam_pseek() from sam.c
     	 return bgzf_seek(hts_file->fp.bgzf, offs, SEEK_SET);
        }
-    else if (hts_file->is_cram) { //cram_pseek()
+    else if (hts_file->is_cram) { //cram_pseek() from sam.c
         if ((0 != cram_seek(hts_file->fp.cram, offs, SEEK_SET))
          && (0 != cram_seek(hts_file->fp.cram, offs - hts_file->fp.cram->first_container, SEEK_CUR)))
             return -1;
