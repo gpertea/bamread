@@ -2,10 +2,11 @@
 #define _G_XAM_H
 #include "GBase.h"
 #include "GList.hh"
-//#include "bam.h"
+#include "htslib/kstring.h"
+#include "htslib/cram.h"
 #include "htslib/sam.h"
 #include "htslib/hfile.h"
-#include "htslib/kstring.h"
+#include "htslib/bgzf.h"
 
 class GXamReader;
 class GXamWriter;
@@ -15,6 +16,7 @@ enum GXamFileType {
    GXamFile_BAM,
    GXamFile_CRAM
 };
+
 class GXamRecord: public GSeg {
    friend class GXamReader;
    friend class GXamWriter;
@@ -35,7 +37,7 @@ class GXamRecord: public GSeg {
     	  bool has_Introns   :1;
       };
    };
-   sam_hdr_t* bam_header;
+   sam_hdr_t* b_hdr;
    char tag[2];
    uint8_t abuf[512];
  public:
@@ -48,9 +50,8 @@ class GXamRecord: public GSeg {
    bool hasIntrons() { return has_Introns; }
    //created from a reader:
    void bfree_on_delete(bool b_free=true) { novel=b_free; }
-   GXamRecord(bam1_t* from_b=NULL, sam_hdr_t* b_header=NULL, bool b_free=true):iflags(0), exons(1),
-		   clipL(0), clipR(0), mapped_len(0) {
-      bam_header=NULL;
+   GXamRecord(bam1_t* from_b=NULL, sam_hdr_t* b_header=NULL, bool b_free=true):b(NULL),
+		   iflags(0), b_hdr(b_header), exons(1),  clipL(0), clipR(0), mapped_len(0) {
       if (from_b==NULL) {
            b=bam_init1();
            novel=true;
@@ -60,7 +61,7 @@ class GXamRecord: public GSeg {
            novel=b_free;
       }
 
-      bam_header=b_header;
+      b_hdr=b_header;
       setupCoordinates();//set 1-based coordinates (start, end and exons array)
    }
 
@@ -97,7 +98,7 @@ class GXamRecord: public GSeg {
         b=NULL;
         exons.Clear();
         mapped_len=0;
-        bam_header=NULL;
+        b_hdr=NULL;
         iflags=0;
     }
 
@@ -164,14 +165,14 @@ class GXamRecord: public GSeg {
    return ((b->core.flag & BAM_FREVERSE) != 0);
  }
  const char* refName() {
-   return (bam_header!=NULL) ?
-         ((b->core.tid<0) ? "*" : bam_header->target_name[b->core.tid]) : NULL;
+   return (b_hdr!=NULL) ?
+         ((b->core.tid<0) ? "*" : b_hdr->target_name[b->core.tid]) : NULL;
    }
  int32_t refId() { return b->core.tid; }
  int32_t mate_refId() { return b->core.mtid; }
  const char* mate_refName() {
-    return (bam_header!=NULL) ?
-       ((b->core.mtid<0) ? "*" : bam_header->target_name[b->core.mtid]) : NULL;
+    return (b_hdr!=NULL) ?
+       ((b->core.mtid<0) ? "*" : b_hdr->target_name[b->core.mtid]) : NULL;
     }
  int32_t insertSize() { return b->core.isize; }
  int32_t mate_start() { return b->core.mpos<0? 0 : b->core.mpos+1; }
@@ -199,56 +200,28 @@ class GXamRecord: public GSeg {
 class GXamReader {
    htsFile* hts_file;
    char* fname;
+   sam_hdr_t* r_hdr;
  public:
-   void bopen(const char* filename, bool forceBinary=false) {
-      if (strcmp(filename, "-")==0) {
-        //if stdin was given, we assume it's text SAM, unless forceBAM was given
-        if (forceBinary) hts_file=hts_open(filename, "rb");
-        else hts_file=hts_open(filename, "r");
-        }
-      else {
-        FILE* f=Gfopen(filename);
-        if (f==NULL) {
-           GError("Error opening SAM/BAM file %s!\n", filename);
-        }
-        if (forceBinary) {
-           //directed to open this as a BAM file
-            if (forceBinary) hts_file=hts_open(filename, "rb");
-        }
-        else {
-          //try to guess if it's BAM or SAM
-          //BAM files have the zlib signature bytes at the beginning: 1F 8B 08
-          //if that's not present then we assume text SAM
-          byte fsig[3];
-          size_t rd=fread(fsig, 1, 3, f);
-          fclose(f);
-          if (rd<3) GError("Error reading from file %s!\n",filename);
-          if ((fsig[0]==0x1F && fsig[1]==0x8B && fsig[2]==0x08) ||
-            (fsig[0]=='B' && fsig[1]=='A' && fsig[2]=='M')) {
-            hts_file=hts_open(filename, "rb", 0); //BAM or uncompressed BAM
-          }
-          else { //assume text SAM file
-            hts_file=hts_open(filename, "r", 0);
-          }
-        }
-      }
+   void bopen(const char* filename) {
+      hts_file=hts_open(filename, "r");
       if (hts_file==NULL)
          GError("Error: could not open SAM file %s!\n",filename);
       fname=Gstrdup(filename);
+      r_hdr=sam_hdr_read(hts_file);
    }
 
-   GXamReader(const char* fn, bool forceBAM=false) {
-      hts_file=NULL;
-      fname=NULL;
-      bopen(fn, forceBAM);
-      }
+   GXamReader(const char* fn):hts_file(NULL),fname(NULL), r_hdr(NULL) {
+      bopen(fn);
+   }
 
    sam_hdr_t* header() {
-      return hts_file? hts_file->header : NULL;
+      return hts_file ? r_hdr : NULL;
    }
 
    void bclose() {
       if (hts_file) {
+   	    if (r_hdr!=NULL) sam_hdr_destroy(r_hdr);
+   	    r_hdr=NULL;
         hts_close(hts_file);
         hts_file=NULL;
         }
@@ -259,15 +232,34 @@ class GXamReader {
       GFREE(fname);
     }
 
-   int64_t fpos() {
-	 /*
-  	 if ( hts_file->type & FTYPE_BAM )
-  	     return bgzf_tell(hts_file->x.bam);
-  	 else
-  		 return (int64_t)gztell(((samtools_tamFile_t*)(hts_file->x.tamr))->fp);
-  	 */
-	 return (int64_t) htell(hts_file->fp);
+   int64_t fpos() { //ftell
+     if (hts_file->is_bgzf) { // bam_ptell() in sam.c
+    	    if (hts_file->fp.bgzf==NULL)
+    	        return -1L;
+    	    return bgzf_tell(hts_file->fp.bgzf);
+     }
+     else if (hts_file->is_cram) { // cram_ptell() in sam.c
+    	    cram_container *c;
+    	    cram_slice *s;
+    	    int64_t ret = -1L;
+    	    if (hts_file->fp.cram) {
+    	        if ((c = hts_file->fp.cram->ctr) != NULL) {
+    	            if ((s = c->slice) != NULL && s->max_rec) {
+    	                if ((c->curr_slice + s->curr_rec/s->max_rec) >= (c->max_slice + 1))
+    	                	hts_file->fp.cram->curr_position += c->offset + c->length;
+    	            }
+    	        }
+    	        ret = hts_file->fp.cram->curr_position;
+    	    }
+
+    	    return ret;
+     }
+     else {
+    	 return htell(hts_file->fp.hfile);
+     }
+
    }
+
    int64_t fseek(int64_t offs) {
 	 /*
   	 if ( hts_file->type & FTYPE_BAM )
@@ -275,25 +267,48 @@ class GXamReader {
   	 else
   		 return (int64_t)gzseek(((samtools_tamFile_t*)(hts_file->x.tamr))->fp, offs, SEEK_SET);
   	*/
-	return (int64_t) hseek(hts_file->fp, (off_t)offs, SEEK_SET);
+    if (hts_file->is_bgzf) { //bam_pseek
+    	 return bgzf_seek(hts_file->fp.bgzf, offs, SEEK_SET);
+       }
+    else if (hts_file->is_cram) { //cram_pseek()
+        if ((0 != cram_seek(hts_file->fp.cram, offs, SEEK_SET))
+         && (0 != cram_seek(hts_file->fp.cram, offs - hts_file->fp.cram->first_container, SEEK_CUR)))
+            return -1;
+
+        hts_file->fp.cram->curr_position = offs;
+
+        if (hts_file->fp.cram->ctr) {
+            cram_free_container(hts_file->fp.cram->ctr);
+            if (hts_file->fp.cram->ctr_mt && hts_file->fp.cram->ctr_mt != hts_file->fp.cram->ctr)
+                cram_free_container(hts_file->fp.cram->ctr_mt);
+
+            hts_file->fp.cram->ctr = NULL;
+            hts_file->fp.cram->ctr_mt = NULL;
+            hts_file->fp.cram->ooc = 0;
+        }
+        return offs;
+      }
+    else
+        return hseek(hts_file->fp.hfile, offs, SEEK_SET);
    }
+
    void rewind() {
      if (fname==NULL) {
        GMessage("Warning: GXamReader::rewind() called without a file name.\n");
        return;
-       }
+     }
      bclose();
      char* ifname=fname;
      bopen(ifname);
      GFREE(ifname);
-     }
+  }
 
-   GXamRecord* next() {
+  GXamRecord* next() {
       if (hts_file==NULL)
         GError("Warning: GXamReader::next() called with no open file.\n");
       bam1_t* b = bam_init1();
-      if (samread(hts_file, b) >= 0) {
-        GXamRecord* bamrec=new GXamRecord(b, hts_file->bam_header, true);
+      if (sam_read1(hts_file, r_hdr, b) >= 0) {
+        GXamRecord* bamrec=new GXamRecord(b, r_hdr, true);
         return bamrec;
         }
       else {
@@ -306,20 +321,20 @@ class GXamReader {
 
 class GXamWriter {
    htsFile* bam_file;
-   sam_hdr_t* bam_header;
+   sam_hdr_t* w_hdr;
  public:
    void create(const char* fname, sam_hdr_t* bh, GXamFileType ftype=GXamFile_BAM) {
-     bam_header=bh;
+     w_hdr=bh;
      create(fname, ftype);
    }
 
    GXamWriter(const char* fname, sam_hdr_t* bh, GXamFileType ftype=GXamFile_BAM):
-	                                    bam_file(NULL),bam_header(NULL) {
+	                                    bam_file(NULL),w_hdr(NULL) {
       create(fname, bh, ftype);
    }
 
    void create(const char* fname, GXamFileType ftype=GXamFile_BAM) {
-      if (bam_header==NULL)
+      if (w_hdr==NULL)
          GError("Error: no header data provided for GXamWriter::create()!\n");
 	  kstring_t mode=KS_INITIALIZE;
       kputc('w', &mode);
@@ -341,18 +356,18 @@ class GXamWriter {
       bam_file = hts_open(fname, mode.s);
       if (bam_file==NULL)
          GError("Error: could not create output file %s\n", fname);
-      if (sam_hdr_write(bam_file, bam_header)<0)
+      if (sam_hdr_write(bam_file, w_hdr)<0)
     	  GError("Error writing header data to file %s\n", fname);
    }
 
    GXamWriter(const char* fname, const char* hdr_file, GXamFileType ftype=GXamFile_BAM):
-	                                             bam_file(NULL),bam_header(NULL) {
+	                                             bam_file(NULL),w_hdr(NULL) {
 	  //create an output file fname with the SAM header copied from hdr_file
       htsFile* samf=hts_open(hdr_file, "r");
       if (samf==NULL)
     	  GError("Error: could not open SAM file %s\n", hdr_file);
-      bam_header=sam_hdr_read(samf);
-      if (bam_header==NULL)
+      w_hdr=sam_hdr_read(samf);
+      if (w_hdr==NULL)
     	  GError("Error: could not read header data from %s\n", hdr_file);
       hts_close(samf);
       create(fname, ftype);
@@ -360,15 +375,15 @@ class GXamWriter {
 
    ~GXamWriter() {
       hts_close(bam_file);
-      sam_hdr_destroy(bam_header);
+      sam_hdr_destroy(w_hdr);
    }
 
-   sam_hdr_t* get_header() { return bam_header; }
+   sam_hdr_t* get_header() { return w_hdr; }
 
    int32_t get_tid(const char *seq_name) {
-      if (bam_header==NULL)
+      if (w_hdr==NULL)
          GError("Error: missing SAM header (get_tid())\n");
-      return sam_hdr_name2tid(bam_header, seq_name);
+      return sam_hdr_name2tid(w_hdr, seq_name);
       }
 
    //just a convenience function for creating a new record, but it's NOT written
@@ -377,7 +392,7 @@ class GXamWriter {
             int pos, bool reverse, const char* qseq, const char* cigar=NULL, const char* qual=NULL) {
       int32_t gseq_tid=get_tid(gseqname);
       if (gseq_tid < 0 && strcmp(gseqname, "*")) {
-            if (bam_header->n_targets == 0) {
+            if (w_hdr->n_targets == 0) {
                GError("Error: missing/invalid SAM header\n");
                } else
                    GMessage("Warning: reference '%s' not found in header, will consider it '*'.\n",
@@ -393,7 +408,7 @@ class GXamWriter {
                           GVec<char*>* aux_strings=NULL) {
       int32_t gseq_tid=get_tid(gseqname);
       if (gseq_tid < 0 && strcmp(gseqname, "*")) {
-            if (bam_header->n_targets == 0) {
+            if (w_hdr->n_targets == 0) {
                GError("Error: missing/invalid SAM header\n");
                } else
                    GMessage("Warning: reference '%s' not found in header, will consider it '*'.\n",
@@ -418,13 +433,13 @@ class GXamWriter {
 
    void write(GXamRecord* brec) {
       if (brec!=NULL) {
-          if (sam_write1(this->bam_file,this->bam_header, brec->get_b())<0)
+          if (sam_write1(this->bam_file,this->w_hdr, brec->get_b())<0)
         	  GError("Error writing SAM record!\n");
       }
    }
 
    void write(bam1_t* xb) {
-     if (sam_write1(this->bam_file, this->bam_header, xb)<0)
+     if (sam_write1(this->bam_file, this->w_hdr, xb)<0)
     	 GError("Error writing SAM record!\n");
    }
 };

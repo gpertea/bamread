@@ -30,7 +30,7 @@ GXamRecord::GXamRecord(const char* qname, int32_t gseq_tid,
                  const char* cigar, const char* quals):iflags(0), exons(1),
                 		 clipL(0), clipR(0), mapped_len(0) {
    novel=true;
-   bam_header=NULL;
+   b_hdr=NULL;
    b=bam_init1();
    if (pos<=0 || gseq_tid<0) {
                b->core.pos=-1; //unmapped
@@ -58,7 +58,7 @@ GXamRecord::GXamRecord(const char* qname, int32_t samflags, int32_t g_tid,
              int insert_size, const char* qseq, const char* quals,
              GVec<char*>* aux_strings):iflags(0), exons(1)  {
   novel=true;
-  bam_header=NULL;
+  b_hdr=NULL;
   b=bam_init1();
   b->core.tid=g_tid;
   b->core.pos = (pos<=0) ? -1 : pos-1; //BAM is 0-based
