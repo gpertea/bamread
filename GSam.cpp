@@ -386,7 +386,6 @@ void GSamRecord::setupCoordinates() {
 	exons.Add(exon);
 	mapped_len+=exon.len();
 	end=c->pos+l; //genomic end coordinate
-	delete[] cigar; //UBsan protection
 }
 
 

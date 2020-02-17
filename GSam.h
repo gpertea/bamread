@@ -3,10 +3,8 @@
 #include "GBase.h"
 #include "GList.hh"
 #include "htslib/kstring.h"
-#include "htslib/cram.h"
 #include "htslib/sam.h"
-#include "htslib/hfile.h"
-#include "htslib/bgzf.h"
+#include "htslib/cram.h"
 
 class GSamReader;
 class GSamWriter;
@@ -202,16 +200,22 @@ class GSamReader {
    char* fname;
    sam_hdr_t* r_hdr;
  public:
-   void bopen(const char* filename) {
+   void bopen(const char* filename, const char* cram_refseq=NULL) {
       hts_file=hts_open(filename, "r");
       if (hts_file==NULL)
          GError("Error: could not open SAM file %s!\n",filename);
+      if (hts_file->is_cram) {
+    	  if (cram_refseq!=NULL) {
+              cram_set_option(hts_file->fp.cram, CRAM_OPT_REFERENCE, cram_refseq);
+    	  }
+    	  else cram_set_option(hts_file->fp.cram, CRAM_OPT_REQUIRED_FIELDS, INT_MAX ^ SAM_SEQ);
+      }
       fname=Gstrdup(filename);
       r_hdr=sam_hdr_read(hts_file);
    }
 
-   GSamReader(const char* fn):hts_file(NULL),fname(NULL), r_hdr(NULL) {
-      bopen(fn);
+   GSamReader(const char* fn, const char* cram_ref=NULL):hts_file(NULL),fname(NULL), r_hdr(NULL) {
+      bopen(fn, cram_ref);
    }
 
    sam_hdr_t* header() {

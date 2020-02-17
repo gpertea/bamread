@@ -22,10 +22,10 @@ BASEFLAGS  := -Wall -Wextra ${SEARCHDIRS} $(MARCH) \
 
 
 ifeq ($(findstring release,$(MAKECMDGOALS)),)
-  CFLAGS := -O2 -DNDEBUG $(BASEFLAGS)
-  LDFLAGS := -L${HTSLIB}
-else
   CFLAGS := -g -DDEBUG -DGDEBUG $(BASEFLAGS)
+  LDFLAGS := -g -L${HTSLIB}
+else
+  CFLAGS := -g -O2 -DNDEBUG $(BASEFLAGS)
   LDFLAGS := -g -L${HTSLIB}
 endif
 

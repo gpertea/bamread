@@ -2,8 +2,9 @@
 #include "GArgs.h"
 #include "GStr.h"
 
-#define USAGE "Usage: bamread [--fasta|-a|--fastq|-q|-G|--gff]\n\
-        [-M|--mapped-only|-A|--all] [-o <outfile>] <in.bam>|<in.sam> \n"
+#define USAGE "Usage: bamread [--fasta|-a|--fastq|-q|-G|--gff] \\\
+	[--ref|-r <ref.fa>] [-M|--mapped-only|-A|--all] \\\
+	[-o <outfile>] <in.bam>|<in.sam>\n"
 
 
 enum OutType {
@@ -17,7 +18,7 @@ bool all_reads=false;
 bool mapped_only=false;
 
 void showfastq(GSamRecord& rec, FILE* fout) {
-  if (rec.isMapped() && !all_reads) return;
+  if (rec.isUnmapped() && !all_reads) return;
   if (mapped_only && rec.isUnmapped()) return;
   char* qseq=rec.sequence();
   fprintf(fout, "@%s\n%s\n", rec.name(), qseq);
@@ -28,7 +29,7 @@ void showfastq(GSamRecord& rec, FILE* fout) {
 }
 
 void showfasta(GSamRecord& rec, FILE* fout) {
-  if (rec.isMapped() && !all_reads) return;
+  if (rec.isUnmapped() && !all_reads) return;
   if (mapped_only && rec.isUnmapped()) return;
   char* qseq=rec.sequence();
   char* alt_name=rec.tag_str("XA");
@@ -50,11 +51,9 @@ void showgff(GSamRecord& rec, FILE* fout) {
      }
 }
 
-int main(int argc, char *argv[])
-{
-
-    GArgs args(argc, argv, "fasta;fastq;gff;all;help;mapped-only;"
-        "hAMGaqo:");
+int main(int argc, char *argv[])  {
+    GArgs args(argc, argv, "fasta;fastq;gff;all;help;mapped-only;ref="
+        "hAMGaqo:r:");
     args.printError(USAGE, true);
     if (args.getOpt('h') || args.getOpt("help") || args.startNonOpt()==0) {
       GMessage(USAGE);
@@ -74,12 +73,16 @@ int main(int argc, char *argv[])
        out_type=outGFF;
        mapped_only=true;
        }
+    char* cram_ref=NULL;
+    cram_ref=args.getOpt('r');
+    if (cram_ref==NULL) cram_ref=args.getOpt("ref");
     char* fname=args.nextNonOpt();
     if (fname==NULL || fname[0]==0) {
         GMessage(USAGE);
         return 1;
-        }
-    GSamReader bamreader(fname);
+    }
+    GSamReader samreader(fname, cram_ref);
+    //GSamReader samreader(fname);
     FILE* fout=stdout;
     char* outfname=args.getOpt('o');
     if (outfname) {
@@ -87,27 +90,27 @@ int main(int argc, char *argv[])
        if (fout==NULL) {
            fprintf(stderr, "Error creating output file %s\n", outfname);
            return 2;
-           }
        }
+    }
     GSamRecord *aln=NULL;
     if (out_type==outFASTA) {
-        while ((aln=bamreader.next())!=NULL) {
+        while ((aln=samreader.next())!=NULL) {
            showfasta(*aln, fout);
            delete aln;
-           }
         }
-      else if (out_type==outGFF) {
-        while ((aln=bamreader.next())!=NULL) {
+    }
+    else if (out_type==outGFF) {
+        while ((aln=samreader.next())!=NULL) {
            showgff(*aln, fout);
            delete aln;
-           }
         }
+    }
       else {
-        while ((aln=bamreader.next())!=NULL) {
-           showfastq(*aln, fout);
-           delete aln;
-           }
+        while ((aln=samreader.next())!=NULL) {
+          showfastq(*aln, fout);
+          delete aln;
         }
+    }
     if (fout!=stdout) fclose(fout);
     return 0;
 }
