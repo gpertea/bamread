@@ -1,29 +1,21 @@
 #include "GXam.h"
 #include <ctype.h>
+//for bam1_t (re)allocation functions:
+// sam_realloc_bam_data(), realloc_bam_data(), possibly_expand_bam_data()
+#include "sam_internal.h"
 
-//auxiliary functions for low level BAM record creation
-uint8_t* realloc_bdata(bam1_t *b, int size) {
-  if (b->m_data < size) {
-        b->m_data = size;
-        kroundup32(b->m_data);
-        b->data = (uint8_t*)realloc(b->data, b->m_data);
-        }
-  if (b->data_len<size) b->data_len=size;
-  return b->data;
-}
+//for parsing functions hts_str2uint() etc.:
+#include "textutils_internal.h"
 
-uint8_t* dupalloc_bdata(bam1_t *b, int size) {
-  //same as realloc_bdata, but does not free previous data
-  //but returns it instead
-  //it ALWAYS duplicates data
-  b->m_data = size;
-  kroundup32(b->m_data);
-  uint8_t* odata=b->data;
-  b->data = (uint8_t*)malloc(b->m_data);
-  memcpy((void*)b->data, (void*)odata, b->data_len);
-  b->data_len=size;
-  return odata; //user must FREE this after
-}
+#define  _get_bmem(type_t, x, b, l) if (possibly_expand_bam_data((b), (l)) < 0) \
+ GError("Error: cannot allocate SAM data\n"); \
+ *(x) = (type_t*)((b)->data + (b)->l_data); (b)->l_data += (l)
+#define _parse_err(cond, msg) if (cond) GError("Error [SAM parsing]: %s\n",msg);
+#define _parse_warn(cond, msg) if (cond) GMessage("Warning [SAM parsing]: %s\n",msg);
+#define _parse_mem_err() GError("Error [SAM parsing]: memory allocation problem!\n");
+
+#define _cigOp(c) ((c)&BAM_CIGAR_MASK)
+#define _cigLen(c) ((c)>>BAM_CIGAR_SHIFT)
 
 GXamRecord::GXamRecord(const char* qname, int32_t gseq_tid,
                  int pos, bool reverse, const char* qseq,
@@ -42,16 +34,27 @@ GXamRecord::GXamRecord(const char* qname, int32_t gseq_tid,
    b->core.qual=255;
    b->core.mtid=-1;
    b->core.mpos=-1;
-   int l_qseq=strlen(qseq);
-   //this may not be accurate, setting CIGAR is the correct way
-   //b->core.bin = bam_reg2bin(b->core.pos, b->core.pos+l_qseq-1);
-   b->core.l_qname=strlen(qname)+1; //includes the \0 at the end
-   memcpy(realloc_bdata(b, b->core.l_qname), qname, b->core.l_qname);
+   int l_qname=strlen(qname);
+   //from sam_parse1() in sam.c:
+   _parse_warn(l_qname <= 1, "empty query name");
+   _parse_err(l_qname > 255, "query name too long");
+   // resize large enough for name + extranul
+   if (possibly_expand_bam_data(b, l_qname + 4) < 0)
+      _parse_mem_err();
+   memcpy(b->data + b->l_data, qname, l_qname);
+   b->l_data += l_qname;
+
+   b->core.l_extranul = (4 - (b->l_data & 3)) & 3;
+   memcpy(b->data + b->l_data, "\0\0\0\0", b->core.l_extranul);
+   b->l_data += b->core.l_extranul;
+
+   b->core.l_qname = l_qname + b->core.l_extranul;
+
    set_cigar(cigar); //this will also set core.bin
-   add_sequence(qseq, l_qseq);
-   add_quals(quals); //quals must be given as Phred33
-   if (reverse) { b->core.flag |= BAM_FREVERSE ; }
-   }
+   if (qseq!=NULL) add_sequence(qseq, strlen(qseq));
+   if (quals!=NULL) add_quals(quals); //quals must be given as Phred33
+   if (reverse) b->core.flag |= BAM_FREVERSE;
+}
 
 GXamRecord::GXamRecord(const char* qname, int32_t samflags, int32_t g_tid,
              int pos, int map_qual, const char* cigar, int32_t mg_tid, int mate_pos,
@@ -63,12 +66,26 @@ GXamRecord::GXamRecord(const char* qname, int32_t samflags, int32_t g_tid,
   b->core.tid=g_tid;
   b->core.pos = (pos<=0) ? -1 : pos-1; //BAM is 0-based
   b->core.qual=map_qual;
-  int l_qseq=strlen(qseq);
-  b->core.l_qname=strlen(qname)+1; //includes the \0 at the end
-  memcpy(realloc_bdata(b, b->core.l_qname), qname, b->core.l_qname);
+
+  int l_qname=strlen(qname);
+  //from sam_parse1() in sam.c:
+  _parse_warn(l_qname <= 1, "empty query name");
+  _parse_err(l_qname > 255, "query name too long");
+  // resize large enough for name + extranul
+  if (possibly_expand_bam_data(b, l_qname + 4) < 0)
+     _parse_mem_err();
+  memcpy(b->data + b->l_data, qname, l_qname);
+  b->l_data += l_qname;
+
+  b->core.l_extranul = (4 - (b->l_data & 3)) & 3;
+  memcpy(b->data + b->l_data, "\0\0\0\0", b->core.l_extranul);
+  b->l_data += b->core.l_extranul;
+
+  b->core.l_qname = l_qname + b->core.l_extranul;
+
   set_cigar(cigar); //this will also set core.bin
-  add_sequence(qseq, l_qseq);
-  add_quals(quals); //quals must be given as Phred33
+  if (qseq!=NULL) add_sequence(qseq, strlen(qseq));
+  if (quals!=NULL) add_quals(quals); //quals must be given as Phred33
   set_flags(samflags);
   set_mdata(mg_tid, (int32_t)(mate_pos-1), (int32_t)insert_size);
   if (aux_strings!=NULL) {
@@ -78,96 +95,90 @@ GXamRecord::GXamRecord(const char* qname, int32_t samflags, int32_t g_tid,
     }
 }
 
- void GXamRecord::set_cigar(const char* cigar) {
-    // ---- see sam_parse1() in htslib/sam.c for details
+void GXamRecord::set_cigar(const char* str) {
    //requires b->core.pos and b->core.flag to have been set properly PRIOR to this call
-   int doff=b->core.l_qname;
-   uint8_t* after_cigar=NULL;
-   int after_cigar_len=0;
-   uint8_t* prev_bdata=NULL;
-   if (b->data_len>doff) {
-      //cigar string already allocated, replace it
-      int d=b->core.l_qname + b->core.n_cigar * 4;//offset of after-cigar data
-      after_cigar=b->data+d;
-      after_cigar_len=b->data_len-d;
+  // also expects the b record memory to not be allocated already (fresh record creation)
+  if (b==NULL) GError("Error: invalid call to ::set_cigar() (b is NULL)\n");
+  //SAM header ptr is in b_hdr
+  char *p = const_cast<char*>(str);
+  bam1_core_t *c = &b->core;
+  int overflow = 0;
+  hts_pos_t cigreflen;
+  if (*p == '*') {
+      _parse_warn(!(c->flag&BAM_FUNMAP),
+    		  "mapped query must have a CIGAR; treated as unmapped");
+      c->flag |= BAM_FUNMAP;
+      cigreflen = 1;
+  }
+  else {
+	  char* q;
+	  uint i=0;
+      uint32_t *cigar;
+      size_t n_cigar = 0;
+      for (q = p; *p!=0; ++p)
+          if (!isdigit(*p)) ++n_cigar;
+      _parse_err( n_cigar == 0, "no CIGAR operations");
+      _parse_err(n_cigar >= 2147483647, "too many CIGAR operations");
+      c->n_cigar = n_cigar;
+      _get_bmem(uint32_t, &cigar, b, c->n_cigar * sizeof(uint32_t));
+      for (i = 0; i < c->n_cigar; ++i) {
+          int op;
+          cigar[i] = hts_str2uint(q, &q, 28, &overflow)<<BAM_CIGAR_SHIFT;
+          op = bam_cigar_table[(unsigned char)*q++];
+          if (op<0) parse_error("unrecognized CIGAR operator");
+          cigar[i] |= op;
       }
-   const char *s;
-   char *t;
-   int i, op;
-   long x;
-   b->core.n_cigar = 0;
-   if (cigar != NULL && strcmp(cigar, "*") != 0) {
-        for (s = cigar; *s; ++s) {
-            if (isalpha(*s)) b->core.n_cigar++;
-            else if (!isdigit(*s)) {
-                 GError("Error: invalid CIGAR character (%s)\n",cigar);
-                 }
-            }
-        if (after_cigar_len>0) { //replace/insert into existing full data
-             prev_bdata=dupalloc_bdata(b, doff + b->core.n_cigar * 4 + after_cigar_len);
-             memcpy((void*)(b->data+doff+b->core.n_cigar*4),(void*)after_cigar, after_cigar_len);
-             free(prev_bdata);
-             }
-           else {
-             realloc_bdata(b, doff + b->core.n_cigar * 4);
-             }
-        for (i = 0, s = cigar; i != b->core.n_cigar; ++i) {
-            x = strtol(s, &t, 10);
-            op = toupper(*t);
-            if (op == 'M' || op == '=' || op == 'X') op = BAM_CMATCH;
-            else if (op == 'I') op = BAM_CINS;
-            else if (op == 'D') op = BAM_CDEL;
-            else if (op == 'N') op = BAM_CREF_SKIP; //has_Introns=true;
-            else if (op == 'S') op = BAM_CSOFT_CLIP; //soft_Clipped=true;
-            else if (op == 'H') op = BAM_CHARD_CLIP; //hard_Clipped=true;
-            else if (op == 'P') op = BAM_CPAD;
-            else GError("Error: invalid CIGAR operation (%s)\n",cigar);
-            s = t + 1;
-            bam_get_cigar(b)[i] = x << BAM_CIGAR_SHIFT | op;
-        }
-        if (*s) GError("Error: unmatched CIGAR operation (%s)\n",cigar);
-        b->core.bin = bam_reg2bin(b->core.pos, bam_calend(&b->core, bam_get_cigar(b)));
-    } else {//no CIGAR string given
-        if (!(b->core.flag&BAM_FUNMAP)) {
-            GMessage("Warning: mapped sequence without CIGAR (%s)\n", (char*)b->data);
-            b->core.flag |= BAM_FUNMAP;
-        }
-        b->core.bin = bam_reg2bin(b->core.pos, b->core.pos + 1);
-    }
-   setupCoordinates();
-   } //set_cigar()
+      // can't use bam_endpos() directly as some fields not yet set up
+      cigreflen = (!(c->flag&BAM_FUNMAP))? bam_cigar2rlen(c->n_cigar, cigar) : 1;
+  }
+  _parse_err(HTS_POS_MAX - cigreflen <= c->pos,
+             "read ends beyond highest supported position");
+  c->bin = hts_reg2bin(c->pos, c->pos + cigreflen, 14, 5);
+
+}
+
 
  void GXamRecord::add_sequence(const char* qseq, int slen) {
     // ---- see sam_parse1() in htslib/sam.c for details
     //must be called AFTER set_cigar (cannot replace existing sequence for now)
    if (qseq==NULL) return; //should we ever care about this?
    if (slen<0) slen=strlen(qseq);
-   int doff = b->core.l_qname + b->core.n_cigar * 4;
    if (strcmp(qseq, "*")!=0) {
        b->core.l_qseq=slen;
        hts_pos_t ql = bam_cigar2qlen(b->core.n_cigar, bam_get_cigar(b));
+      _parse_err(b->core.n_cigar && ql != b->core.l_qseq,
+    		  "CIGAR and query sequence are of different length");
+
        if (b->core.n_cigar && b->core.l_qseq != ql)
-           GError("Error: CIGAR and sequence length are inconsistent!(%s)\n",
-                  qseq);
-       unsigned int lqs=(b->core.l_qseq+1) >> 1;
-       uint8_t* p = (uint8_t*)realloc_bdata(b, doff + lqs + b->core.l_qseq) + doff;
-       //-- also allocated quals memory!
-       memset(p, 0, lqs);
-       for (int i = 0; i < b->core.l_qseq; ++i)
-           p[i>>1] |= seq_nt16_table[(int)qseq[i]] << 4*(1-i%2);
-       } else b->core.l_qseq = 0;
+           GError("Error: CIGAR and sequence length are inconsistent!(%s:%s)\n",
+        		   bam_get_qname(b), qseq);
+       int v = (b->core.l_qseq + 1) >> 1;
+       uint8_t *t;
+       _get_bmem(uint8_t, &t, b, v);
+
+       unsigned int lqs2 = b->core.l_qseq&~1, i;
+       for (i = 0; i < lqs2; i+=2)
+           t[i>>1] = (seq_nt16_table[(unsigned char)qseq[i]] << 4) | seq_nt16_table[(unsigned char)qseq[i+1]];
+       for (; i < (unsigned int)b->core.l_qseq; ++i)
+           t[i>>1] = seq_nt16_table[(unsigned char)qseq[i]] << ((~i&1)<<2);
    }
+     else b->core.l_qseq = 0;
+ }
 
  void GXamRecord::add_quals(const char* quals) {
-   //requires core.l_qseq already set to the length of quals
-   //must be called AFTER add_sequence(), which also allocates the memory for quals
-   uint8_t* p = b->data+(b->core.l_qname + b->core.n_cigar * 4 + (b->core.l_qseq+1)/2);
+   //must be called immediately AFTER add_sequence()
+   uint8_t *t;
+   //this will just append newly allocated mem to b->data:
+   _get_bmem(uint8_t, &t, b, b->core.l_qseq);
    if (quals==NULL || strcmp(quals, "*") == 0) {
-      for (int i=0;i < b->core.l_qseq; i++) p[i] = 0xff;
+      memset(t, 0xff, b->core.l_qseq);
       return;
-      }
-   for (int i=0;i < b->core.l_qseq; i++) p[i] = quals[i]-33;
    }
+   int qlen=strlen(quals);
+   _parse_err(qlen!=b->core.l_qseq, "SEQ and QUAL are of different length!" );
+   //uint8_t* p=bam_get_qual(b);
+   for (int i=0;i < b->core.l_qseq; i++) t[i] = quals[i]-33;
+}
 
  void GXamRecord::add_aux(const char* str) {
      //requires: being called AFTER add_quals() for built-from-scratch records
@@ -271,8 +282,10 @@ int num_mismatches=0; //NM tag value = edit distance
 switch (cop) {
  case BAM_CDIFF:  // X
       num_mismatches+=cl;
+ 	 //fall-through
  case BAM_CMATCH: // M
-      //have to actually check for mismatches: num_mismatches+=count_mismatches;
+     //have to actually check for mismatches: num_mismatches+=count_mismatches;
+	 //fall-through
  case BAM_CEQUAL: // =
       //printf("[%d-%d]", gpos, gpos + cl - 1);
       gpos+=cl;
@@ -331,22 +344,24 @@ switch (cop) {
 void GXamRecord::setupCoordinates() {
 	const bam1_core_t *c = &b->core;
 	if (c->flag & BAM_FUNMAP) return; /* skip unmapped reads */
-	uint32_t *p = bam_get_cigar(b);
+	uint32_t *cigar = bam_get_cigar(b);
+	/*
 	//--- prevent alignment error here (reported by UB-sanitazer):
 	uint32_t *cigar= new uint32_t[c->n_cigar];
 	memcpy(cigar, p, c->n_cigar * sizeof(uint32_t));
 	//--- UBsan protection end
+    */
 	int l=0;
 	mapped_len=0;
 	clipL=0;
 	clipR=0;
 	start=c->pos+1; //genomic start coordinate, 1-based (BAM core.pos is 0-based)
 	int exstart=c->pos;
-	for (int i = 0; i < c->n_cigar; ++i) {
-		int op = cigar[i]&0xf;
+	for (uint i = 0; i < c->n_cigar; ++i) {
+		uint32_t op = _cigOp(cigar[i]);
 		if (op == BAM_CMATCH || op==BAM_CEQUAL ||
 				op == BAM_CDIFF || op == BAM_CDEL) {
-			l += cigar[i]>>4;
+			l += _cigLen(cigar[i]);
 		}
 		else if (op == BAM_CREF_SKIP) { //N
 			//intron starts
@@ -355,13 +370,13 @@ void GXamRecord::setupCoordinates() {
 			GSeg exon(exstart+1,c->pos+l);
 			exons.Add(exon);
 			mapped_len+=exon.len();
-			l += cigar[i]>>4;
+			l += _cigLen(cigar[i]);
 			exstart=c->pos+l;
 		}
 		else if (op == BAM_CSOFT_CLIP) {
 			soft_Clipped=true;
-			if (l) clipR=(cigar[i]>>4);
-			else clipL=(cigar[i]>>4);
+			if (l) clipR=_cigLen(cigar[i]);
+			else clipL=_cigLen(cigar[i]);
 		}
 		else if (op == BAM_CHARD_CLIP) {
 			hard_Clipped=true;
@@ -445,7 +460,7 @@ void GXamRecord::setupCoordinates() {
    kstring_t str = KS_INITIALIZE;
    if (b->core.n_cigar == 0) kputc('*', &str);
     else {
-      for (int i = 0; i < b->core.n_cigar; ++i) {
+      for (uint i = 0; i < b->core.n_cigar; ++i) {
          kputw(bam_get_cigar(b)[i]>>BAM_CIGAR_SHIFT, &str);
          kputc("MIDNSHP=X"[bam_get_cigar(b)[i]&BAM_CIGAR_MASK], &str);
          }

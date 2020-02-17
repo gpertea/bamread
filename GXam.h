@@ -133,7 +133,7 @@ class GXamRecord: public GSeg {
              int insert_size, const char* qseq, const char* quals=NULL,
              GVec<char*>* aux_strings=NULL);
              //const std::vector<std::string>* aux_strings=NULL);
-    void set_cigar(const char* cigar); //converts and adds CIGAR string given in plain SAM text format
+    void set_cigar(const char* str); //converts and adds CIGAR string given in plain SAM text format
     void add_sequence(const char* qseq, int slen=-1); //adds the DNA sequence given in plain text format
     void add_quals(const char* quals); //quality values string in Phred33 format
     void add_aux(const char* str); //adds one aux field in plain SAM text format (e.g. "NM:i:1")
@@ -231,7 +231,7 @@ class GXamReader {
       bclose();
       GFREE(fname);
     }
-
+   /*
    int64_t fpos() { //ftell
      if (hts_file->is_bgzf) { // bam_ptell() from sam.c
     	    if (hts_file->fp.bgzf==NULL)
@@ -261,12 +261,6 @@ class GXamReader {
    }
 
    int64_t fseek(int64_t offs) {
-	 /*
-  	 if ( hts_file->type & FTYPE_BAM )
-  		 return bgzf_seek(hts_file->x.bam, offs, SEEK_SET);
-  	 else
-  		 return (int64_t)gzseek(((samtools_tamFile_t*)(hts_file->x.tamr))->fp, offs, SEEK_SET);
-  	*/
     if (hts_file->is_bgzf) { //bam_pseek() from sam.c
     	 return bgzf_seek(hts_file->fp.bgzf, offs, SEEK_SET);
        }
@@ -291,7 +285,7 @@ class GXamReader {
     else
         return hseek(hts_file->fp.hfile, offs, SEEK_SET);
    }
-
+   */
    void rewind() {
      if (fname==NULL) {
        GMessage("Warning: GXamReader::rewind() called without a file name.\n");
@@ -318,7 +312,9 @@ class GXamReader {
       }
 };
 
-
+//basic BAM/SAM/CRAM writer class
+// limitations: cannot add new reference sequences, just new alignments to
+//  existing reference sequences;
 class GXamWriter {
    htsFile* bam_file;
    sam_hdr_t* w_hdr;
