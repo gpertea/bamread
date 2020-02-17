@@ -1,4 +1,4 @@
-#include "GXam.h"
+#include "GSam.h"
 #include <ctype.h>
 //for bam1_t (re)allocation functions:
 // sam_realloc_bam_data(), realloc_bam_data(), possibly_expand_bam_data()
@@ -17,7 +17,7 @@
 #define _cigOp(c) ((c)&BAM_CIGAR_MASK)
 #define _cigLen(c) ((c)>>BAM_CIGAR_SHIFT)
 
-GXamRecord::GXamRecord(const char* qname, int32_t gseq_tid,
+GSamRecord::GSamRecord(const char* qname, int32_t gseq_tid,
                  int pos, bool reverse, const char* qseq,
                  const char* cigar, const char* quals):iflags(0), exons(1),
                 		 clipL(0), clipR(0), mapped_len(0) {
@@ -56,7 +56,7 @@ GXamRecord::GXamRecord(const char* qname, int32_t gseq_tid,
    if (reverse) b->core.flag |= BAM_FREVERSE;
 }
 
-GXamRecord::GXamRecord(const char* qname, int32_t samflags, int32_t g_tid,
+GSamRecord::GSamRecord(const char* qname, int32_t samflags, int32_t g_tid,
              int pos, int map_qual, const char* cigar, int32_t mg_tid, int mate_pos,
              int insert_size, const char* qseq, const char* quals,
              GVec<char*>* aux_strings):iflags(0), exons(1)  {
@@ -95,7 +95,7 @@ GXamRecord::GXamRecord(const char* qname, int32_t samflags, int32_t g_tid,
     }
 }
 
-void GXamRecord::set_cigar(const char* str) {
+void GSamRecord::set_cigar(const char* str) {
    //requires b->core.pos and b->core.flag to have been set properly PRIOR to this call
   // also expects the b record memory to not be allocated already (fresh record creation)
   if (b==NULL) GError("Error: invalid call to ::set_cigar() (b is NULL)\n");
@@ -138,7 +138,7 @@ void GXamRecord::set_cigar(const char* str) {
 }
 
 
- void GXamRecord::add_sequence(const char* qseq, int slen) {
+ void GSamRecord::add_sequence(const char* qseq, int slen) {
     // ---- see sam_parse1() in htslib/sam.c for details
     //must be called AFTER set_cigar (cannot replace existing sequence for now)
    if (qseq==NULL) return; //should we ever care about this?
@@ -165,7 +165,7 @@ void GXamRecord::set_cigar(const char* str) {
      else b->core.l_qseq = 0;
  }
 
- void GXamRecord::add_quals(const char* quals) {
+ void GSamRecord::add_quals(const char* quals) {
    //must be called immediately AFTER add_sequence()
    uint8_t *t;
    //this will just append newly allocated mem to b->data:
@@ -180,7 +180,7 @@ void GXamRecord::set_cigar(const char* str) {
    for (int i=0;i < b->core.l_qseq; i++) t[i] = quals[i]-33;
 }
 
- void GXamRecord::add_aux(const char* str) {
+ void GSamRecord::add_aux(const char* str) {
      //requires: being called AFTER add_quals() for built-from-scratch records
 	 //--check the "// aux" section in sam_parse1() htslib/sam.c
      int strl=strlen(str);
@@ -341,7 +341,7 @@ switch (cop) {
  return mbases;
 } // interpret_CIGAR(), just a reference of CIGAR operations interpretation
 
-void GXamRecord::setupCoordinates() {
+void GSamRecord::setupCoordinates() {
 	const bam1_core_t *c = &b->core;
 	if (c->flag & BAM_FUNMAP) return; /* skip unmapped reads */
 	uint32_t *cigar = bam_get_cigar(b);
@@ -390,35 +390,35 @@ void GXamRecord::setupCoordinates() {
 }
 
 
- uint8_t* GXamRecord::find_tag(const char tag[2]) {
+ uint8_t* GSamRecord::find_tag(const char tag[2]) {
    return bam_aux_get(this->b, tag);
  }
 
- char GXamRecord::tag_char(const char tag[2]) { //retrieve tag data as single char
+ char GSamRecord::tag_char(const char tag[2]) { //retrieve tag data as single char
    uint8_t* s=find_tag(tag);
    if (s) return ( bam_aux2A(s) );
    return 0;
   }
 
- int GXamRecord::tag_int(const char tag[2]) { //get the numeric value of tag
+ int GSamRecord::tag_int(const char tag[2]) { //get the numeric value of tag
    uint8_t *s=find_tag(tag);
    if (s) return ( bam_aux2i(s) );
    return 0;
    }
 
- float GXamRecord::tag_float(const char tag[2]) { //get the float value of tag
+ float GSamRecord::tag_float(const char tag[2]) { //get the float value of tag
     uint8_t *s=bam_aux_get(this->b, tag);;
     if (s) return ( bam_aux2f(s) );
     return 0;
     }
 
- char* GXamRecord::tag_str(const char tag[2]) { //return string value for a tag
+ char* GSamRecord::tag_str(const char tag[2]) { //return string value for a tag
    uint8_t *s=find_tag(tag);
    if (s) return ( bam_aux2Z(s) );
    return NULL;
    }
 
- char GXamRecord::spliceStrand() { // '+', '-' from the XS tag, or 0 if no XS tag
+ char GSamRecord::spliceStrand() { // '+', '-' from the XS tag, or 0 if no XS tag
    char c=tag_char("XS");
    if (c==0) {
     //try minimap2's "ts" tag
@@ -431,7 +431,7 @@ void GXamRecord::setupCoordinates() {
    return ((c=='+' || c=='-') ? c : '.');
  }
 
- char* GXamRecord::sequence() { //user must free this after use
+ char* GSamRecord::sequence() { //user must free this after use
    char *s = (char*)bam_get_seq(b);
    char* qseq=NULL;
    GMALLOC(qseq, (b->core.l_qseq+1));
@@ -444,7 +444,7 @@ void GXamRecord::setupCoordinates() {
    return qseq;
    }
 
- char* GXamRecord::qualities() {//user must free this after use
+ char* GSamRecord::qualities() {//user must free this after use
    char *qual  = (char*)bam_get_qual(b);
    char* qv=NULL;
    GMALLOC(qv, (b->core.l_qseq+1) );
@@ -456,7 +456,7 @@ void GXamRecord::setupCoordinates() {
    return qv;
    }
 
- char* GXamRecord::cigar() { //returns text version of the CIGAR string; must be freed by user
+ char* GSamRecord::cigar() { //returns text version of the CIGAR string; must be freed by user
    kstring_t str = KS_INITIALIZE;
    if (b->core.n_cigar == 0) kputc('*', &str);
     else {

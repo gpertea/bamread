@@ -37,15 +37,15 @@ endif
 LINKER  := g++
 LIBS := ${HTSLIB}/libhts.a ${LIBDEFLATE} -llzma -lbz2 -lz -lm -lcurl -lcrypto -lpthread
 OBJS := ${GCLDIR}/GBase.o ${GCLDIR}/GArgs.o ${GCLDIR}/GStr.o \
-        GXam.o
+        GSam.o
  
 .PHONY : all
 all:    bamread
 debug:  bamread
 
 $(OBJS) : $(GCLDIR)/GBase.h $(GCLDIR)/GBase.h 
-bamread.o : ./GXam.h
-GXam.o : ./GXam.h
+bamread.o : ./GSam.h
+GSam.o : ./GSam.h
 
 bamread: $(OBJS) bamread.o
 	${LINKER} ${LDFLAGS} $(GCC45OPTS) $(GCC45OPTMAIN) -o $@ ${filter-out %.a %.so, $^} ${LIBS}

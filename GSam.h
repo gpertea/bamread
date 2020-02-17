@@ -1,5 +1,5 @@
-#ifndef _G_XAM_H
-#define _G_XAM_H
+#ifndef _G_SAM_H
+#define _G_SAM_H
 #include "GBase.h"
 #include "GList.hh"
 #include "htslib/kstring.h"
@@ -8,18 +8,18 @@
 #include "htslib/hfile.h"
 #include "htslib/bgzf.h"
 
-class GXamReader;
-class GXamWriter;
-enum GXamFileType {
-   GXamFile_SAM=1,
-   GXamFile_UBAM,
-   GXamFile_BAM,
-   GXamFile_CRAM
+class GSamReader;
+class GSamWriter;
+enum GSamFileType {
+   GSamFile_SAM=1,
+   GSamFile_UBAM,
+   GSamFile_BAM,
+   GSamFile_CRAM
 };
 
-class GXamRecord: public GSeg {
-   friend class GXamReader;
-   friend class GXamWriter;
+class GSamRecord: public GSeg {
+   friend class GSamReader;
+   friend class GSamWriter;
    bam1_t* b;
    // b->data has the following strings concatenated:
    //  qname (including the terminal \0)
@@ -50,7 +50,7 @@ class GXamRecord: public GSeg {
    bool hasIntrons() { return has_Introns; }
    //created from a reader:
    void bfree_on_delete(bool b_free=true) { novel=b_free; }
-   GXamRecord(bam1_t* from_b=NULL, sam_hdr_t* b_header=NULL, bool b_free=true):b(NULL),
+   GSamRecord(bam1_t* from_b=NULL, sam_hdr_t* b_header=NULL, bool b_free=true):b(NULL),
 		   iflags(0), b_hdr(b_header), exons(1),  clipL(0), clipR(0), mapped_len(0) {
       if (from_b==NULL) {
            b=bam_init1();
@@ -65,7 +65,7 @@ class GXamRecord: public GSeg {
       setupCoordinates();//set 1-based coordinates (start, end and exons array)
    }
 
-   GXamRecord(GXamRecord& r):GSeg(r.start, r.end), iflags(0), exons(r.exons),
+   GSamRecord(GSamRecord& r):GSeg(r.start, r.end), iflags(0), exons(r.exons),
 		   clipL(r.clipL), clipR(r.clipR), mapped_len(r.mapped_len) { //copy constructor
 	      //makes a new copy of the bam1_t record etc.
 	      clear();
@@ -73,7 +73,7 @@ class GXamRecord: public GSeg {
 	      novel=true; //will also free b when destroyed
    }
 
-   const GXamRecord& operator=(GXamRecord& r) {
+   const GSamRecord& operator=(GSamRecord& r) {
 	  //copy operator
       //makes a new copy of the bam1_t record etc.
       clear();
@@ -102,7 +102,7 @@ class GXamRecord: public GSeg {
         iflags=0;
     }
 
-    ~GXamRecord() {
+    ~GSamRecord() {
        clear();
     }
 
@@ -126,9 +126,9 @@ class GXamRecord: public GSeg {
     //creates a new record from 1-based alignment coordinate
     //quals should be given as Phred33
     //Warning: pos and mate_pos must be given 1-based!
-    GXamRecord(const char* qname, int32_t gseq_tid,
+    GSamRecord(const char* qname, int32_t gseq_tid,
                     int pos, bool reverse, const char* qseq, const char* cigar=NULL, const char* quals=NULL);
-    GXamRecord(const char* qname, int32_t samflags, int32_t g_tid,
+    GSamRecord(const char* qname, int32_t samflags, int32_t g_tid,
              int pos, int map_qual, const char* cigar, int32_t mg_tid, int mate_pos,
              int insert_size, const char* qseq, const char* quals=NULL,
              GVec<char*>* aux_strings=NULL);
@@ -197,7 +197,7 @@ class GXamRecord: public GSeg {
 #define FTYPE_BAM  1
 #define FTYPE_READ 2
 
-class GXamReader {
+class GSamReader {
    htsFile* hts_file;
    char* fname;
    sam_hdr_t* r_hdr;
@@ -210,7 +210,7 @@ class GXamReader {
       r_hdr=sam_hdr_read(hts_file);
    }
 
-   GXamReader(const char* fn):hts_file(NULL),fname(NULL), r_hdr(NULL) {
+   GSamReader(const char* fn):hts_file(NULL),fname(NULL), r_hdr(NULL) {
       bopen(fn);
    }
 
@@ -227,7 +227,7 @@ class GXamReader {
         }
     }
 
-   ~GXamReader() {
+   ~GSamReader() {
       bclose();
       GFREE(fname);
     }
@@ -288,7 +288,7 @@ class GXamReader {
    */
    void rewind() {
      if (fname==NULL) {
-       GMessage("Warning: GXamReader::rewind() called without a file name.\n");
+       GMessage("Warning: GSamReader::rewind() called without a file name.\n");
        return;
      }
      bclose();
@@ -297,12 +297,12 @@ class GXamReader {
      GFREE(ifname);
   }
 
-  GXamRecord* next() {
+  GSamRecord* next() {
       if (hts_file==NULL)
-        GError("Warning: GXamReader::next() called with no open file.\n");
+        GError("Warning: GSamReader::next() called with no open file.\n");
       bam1_t* b = bam_init1();
       if (sam_read1(hts_file, r_hdr, b) >= 0) {
-        GXamRecord* bamrec=new GXamRecord(b, r_hdr, true);
+        GSamRecord* bamrec=new GSamRecord(b, r_hdr, true);
         return bamrec;
         }
       else {
@@ -315,36 +315,36 @@ class GXamReader {
 //basic BAM/SAM/CRAM writer class
 // limitations: cannot add new reference sequences, just new alignments to
 //  existing reference sequences;
-class GXamWriter {
+class GSamWriter {
    htsFile* bam_file;
    sam_hdr_t* w_hdr;
  public:
-   void create(const char* fname, sam_hdr_t* bh, GXamFileType ftype=GXamFile_BAM) {
+   void create(const char* fname, sam_hdr_t* bh, GSamFileType ftype=GSamFile_BAM) {
      w_hdr=bh;
      create(fname, ftype);
    }
 
-   GXamWriter(const char* fname, sam_hdr_t* bh, GXamFileType ftype=GXamFile_BAM):
+   GSamWriter(const char* fname, sam_hdr_t* bh, GSamFileType ftype=GSamFile_BAM):
 	                                    bam_file(NULL),w_hdr(NULL) {
       create(fname, bh, ftype);
    }
 
-   void create(const char* fname, GXamFileType ftype=GXamFile_BAM) {
+   void create(const char* fname, GSamFileType ftype=GSamFile_BAM) {
       if (w_hdr==NULL)
-         GError("Error: no header data provided for GXamWriter::create()!\n");
+         GError("Error: no header data provided for GSamWriter::create()!\n");
 	  kstring_t mode=KS_INITIALIZE;
       kputc('w', &mode);
       switch (ftype) {
-         case GXamFile_BAM:
+         case GSamFile_BAM:
         	kputc('b', &mode);
         	break;
-         case GXamFile_UBAM:
+         case GSamFile_UBAM:
         	kputs("bu", &mode);
         	break;
-         case GXamFile_CRAM:
+         case GSamFile_CRAM:
         	kputc('c', &mode);
         	break;
-         case GXamFile_SAM:
+         case GSamFile_SAM:
          	break;
          default:
       	   GError("Error: unrecognized output file type!\n");
@@ -356,7 +356,7 @@ class GXamWriter {
     	  GError("Error writing header data to file %s\n", fname);
    }
 
-   GXamWriter(const char* fname, const char* hdr_file, GXamFileType ftype=GXamFile_BAM):
+   GSamWriter(const char* fname, const char* hdr_file, GSamFileType ftype=GSamFile_BAM):
 	                                             bam_file(NULL),w_hdr(NULL) {
 	  //create an output file fname with the SAM header copied from hdr_file
       htsFile* samf=hts_open(hdr_file, "r");
@@ -369,7 +369,7 @@ class GXamWriter {
       create(fname, ftype);
    }
 
-   ~GXamWriter() {
+   ~GSamWriter() {
       hts_close(bam_file);
       sam_hdr_destroy(w_hdr);
    }
@@ -384,7 +384,7 @@ class GXamWriter {
 
    //just a convenience function for creating a new record, but it's NOT written
    //given pos must be 1-based (so it'll be stored as pos-1 because BAM is 0-based)
-   GXamRecord* new_record(const char* qname, const char* gseqname,
+   GSamRecord* new_record(const char* qname, const char* gseqname,
             int pos, bool reverse, const char* qseq, const char* cigar=NULL, const char* qual=NULL) {
       int32_t gseq_tid=get_tid(gseqname);
       if (gseq_tid < 0 && strcmp(gseqname, "*")) {
@@ -395,10 +395,10 @@ class GXamWriter {
                                    gseqname);
             }
 
-      return (new GXamRecord(qname, gseq_tid, pos, reverse, qseq, cigar, qual));
+      return (new GSamRecord(qname, gseq_tid, pos, reverse, qseq, cigar, qual));
       }
 
-   GXamRecord* new_record(const char* qname, int32_t samflags, const char* gseqname,
+   GSamRecord* new_record(const char* qname, int32_t samflags, const char* gseqname,
          int pos, int map_qual, const char* cigar, const char* mgseqname, int mate_pos,
          int insert_size, const char* qseq, const char* quals=NULL,
                           GVec<char*>* aux_strings=NULL) {
@@ -423,11 +423,11 @@ class GXamWriter {
                 }
             }
           }
-      return (new GXamRecord(qname, samflags, gseq_tid, pos, map_qual, cigar,
+      return (new GSamRecord(qname, samflags, gseq_tid, pos, map_qual, cigar,
               mgseq_tid, mate_pos, insert_size, qseq, quals, aux_strings));
       }
 
-   void write(GXamRecord* brec) {
+   void write(GSamRecord* brec) {
       if (brec!=NULL) {
           if (sam_write1(this->bam_file,this->w_hdr, brec->get_b())<0)
         	  GError("Error writing SAM record!\n");

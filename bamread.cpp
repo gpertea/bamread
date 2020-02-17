@@ -1,4 +1,4 @@
-#include "GXam.h"
+#include "GSam.h"
 #include "GArgs.h"
 #include "GStr.h"
 
@@ -16,7 +16,7 @@ OutType out_type=outFASTQ;
 bool all_reads=false;
 bool mapped_only=false;
 
-void showfastq(GXamRecord& rec, FILE* fout) {
+void showfastq(GSamRecord& rec, FILE* fout) {
   if (rec.isMapped() && !all_reads) return;
   if (mapped_only && rec.isUnmapped()) return;
   char* qseq=rec.sequence();
@@ -27,7 +27,7 @@ void showfastq(GXamRecord& rec, FILE* fout) {
   GFREE(qseq);
 }
 
-void showfasta(GXamRecord& rec, FILE* fout) {
+void showfasta(GSamRecord& rec, FILE* fout) {
   if (rec.isMapped() && !all_reads) return;
   if (mapped_only && rec.isUnmapped()) return;
   char* qseq=rec.sequence();
@@ -39,7 +39,7 @@ void showfasta(GXamRecord& rec, FILE* fout) {
   GFREE(qseq);
 }
 
-void showgff(GXamRecord& rec, FILE* fout) {
+void showgff(GSamRecord& rec, FILE* fout) {
   if (rec.isUnmapped()) return;
   char tstrand=rec.spliceStrand();
   fprintf(fout, "%s\tbam\tmRNA\t%d\t%d\t.\t%c\t.\tID=%s\n", rec.refName(),
@@ -79,7 +79,7 @@ int main(int argc, char *argv[])
         GMessage(USAGE);
         return 1;
         }
-    GXamReader bamreader(fname);
+    GSamReader bamreader(fname);
     FILE* fout=stdout;
     char* outfname=args.getOpt('o');
     if (outfname) {
@@ -89,7 +89,7 @@ int main(int argc, char *argv[])
            return 2;
            }
        }
-    GXamRecord *aln=NULL;
+    GSamRecord *aln=NULL;
     if (out_type==outFASTA) {
         while ((aln=bamreader.next())!=NULL) {
            showfasta(*aln, fout);
