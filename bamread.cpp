@@ -2,10 +2,9 @@
 #include "GArgs.h"
 #include "GStr.h"
 
-#define USAGE "Usage: bamread [--fasta|-a|--fastq|-q|-G|--gff] \\\
-	[--ref|-r <ref.fa>] [-M|--mapped-only|-A|--all] \\\
-	[-o <outfile>] <in.bam>|<in.sam>\n"
-
+const char* USAGE="Usage:\n  bamread [--fasta|-a|--fastq|-q|-G|--gff] \\\n"
+"	[--ref|-r <ref.fa>] [-M|--mapped-only|-A|--all] \\\n"
+"	[-o <outfile>] <in.bam>|<in.sam>\n";
 
 enum OutType {
   outFASTQ,
