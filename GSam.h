@@ -8,6 +8,7 @@
 
 class GSamReader;
 class GSamWriter;
+
 enum GSamFileType {
    GSamFile_SAM=1,
    GSamFile_UBAM,
@@ -36,8 +37,6 @@ class GSamRecord: public GSeg {
       };
    };
    sam_hdr_t* b_hdr;
-   char tag[2];
-   uint8_t abuf[512];
  public:
    GVec<GSeg> exons; //coordinates will be 1-based
    int clipL; //soft clipping data, as seen in the CIGAR string
@@ -63,10 +62,10 @@ class GSamRecord: public GSeg {
       setupCoordinates();//set 1-based coordinates (start, end and exons array)
    }
 
-   GSamRecord(GSamRecord& r):GSeg(r.start, r.end), iflags(0), exons(r.exons),
-		   clipL(r.clipL), clipR(r.clipR), mapped_len(r.mapped_len) { //copy constructor
+   //deep copy constructor:
+   GSamRecord(GSamRecord& r):GSeg(r.start, r.end), iflags(r.iflags), b_hdr(r.b_hdr),
+		   exons(r.exons), clipL(r.clipL), clipR(r.clipR), mapped_len(r.mapped_len) {
 	      //makes a new copy of the bam1_t record etc.
-	      clear();
 	      b=bam_dup1(r.b);
 	      novel=true; //will also free b when destroyed
    }
@@ -145,6 +144,10 @@ class GSamRecord: public GSeg {
       //IMPORTANT:  strings type (Z,H) should include the terminal \0
       return bam_aux_append(b, tag, atype, len, data);
     }
+
+    int add_int_tag(const char tag[2], int64_t val) { //add or update int tag
+    	return bam_aux_update_int(b, tag, val);
+    }
  //--query methods:
  uint32_t flags() { return b->core.flag; } //return SAM flags
  bool isUnmapped() { return ((b->core.flag & BAM_FUNMAP) != 0); }
@@ -181,11 +184,11 @@ class GSamRecord: public GSeg {
  //returns length of tag data, or 0 if tag not found
 
  char* tag_str(const char tag[2]); //return tag value for tag type 'Z'
- int tag_int(const char tag[2]); //return numeric value of tag (for numeric types)
- float tag_float(const char tag[2]); //return float value of tag (for float types)
+ int64_t tag_int(const char tag[2]); //return numeric value of tag (for numeric types)
+ double tag_float(const char tag[2]); //return float value of tag (for float types)
  char tag_char(const char tag[2]); //return char value of tag (for type 'A')
+ char tag_char1(const char tag[2]);
  char spliceStrand(); // '+', '-' from the XS tag, or '.' if no XS tag
-
  char* sequence(); //user should free after use
  char* qualities();//user should free after use
  char* cigar(); //returns text version of the CIGAR string; user must free
@@ -198,34 +201,38 @@ class GSamRecord: public GSeg {
 class GSamReader {
    htsFile* hts_file;
    char* fname;
-   sam_hdr_t* r_hdr;
+   sam_hdr_t* hdr;
  public:
    void bopen(const char* filename, const char* cram_refseq=NULL) {
       hts_file=hts_open(filename, "r");
       if (hts_file==NULL)
-         GError("Error: could not open SAM file %s!\n",filename);
+         GError("Error: could not open alignment file %s \n",filename);
       if (hts_file->is_cram) {
     	  if (cram_refseq!=NULL) {
               hts_set_opt(hts_file, CRAM_OPT_REFERENCE, cram_refseq);
     	  }
-    	  else hts_set_opt(hts_file, CRAM_OPT_REQUIRED_FIELDS, INT_MAX ^ SAM_SEQ);
+    	  else hts_set_opt(hts_file, CRAM_OPT_REQUIRED_FIELDS,
+    			  INT_MAX ^ SAM_SEQ ^ SAM_QUAL ^ SAM_RGAUX);
       }
       fname=Gstrdup(filename);
-      r_hdr=sam_hdr_read(hts_file);
+      hdr=sam_hdr_read(hts_file);
    }
 
-   GSamReader(const char* fn, const char* cram_ref=NULL):hts_file(NULL),fname(NULL), r_hdr(NULL) {
+   GSamReader(const char* fn, const char* cram_ref=NULL):hts_file(NULL),fname(NULL), hdr(NULL) {
       bopen(fn, cram_ref);
    }
 
    sam_hdr_t* header() {
-      return hts_file ? r_hdr : NULL;
+      return hts_file ? hdr : NULL;
+   }
+   const char* fileName() {
+      return fname;
    }
 
    void bclose() {
       if (hts_file) {
-   	    if (r_hdr!=NULL) sam_hdr_destroy(r_hdr);
-   	    r_hdr=NULL;
+   	    if (hdr!=NULL) sam_hdr_destroy(hdr);
+   	    hdr=NULL;
         hts_close(hts_file);
         hts_file=NULL;
         }
@@ -305,8 +312,8 @@ class GSamReader {
       if (hts_file==NULL)
         GError("Warning: GSamReader::next() called with no open file.\n");
       bam1_t* b = bam_init1();
-      if (sam_read1(hts_file, r_hdr, b) >= 0) {
-        GSamRecord* bamrec=new GSamRecord(b, r_hdr, true);
+      if (sam_read1(hts_file, hdr, b) >= 0) {
+        GSamRecord* bamrec=new GSamRecord(b, hdr, true);
         return bamrec;
         }
       else {
@@ -321,20 +328,20 @@ class GSamReader {
 //  existing reference sequences;
 class GSamWriter {
    htsFile* bam_file;
-   sam_hdr_t* w_hdr;
+   sam_hdr_t* hdr;
  public:
    void create(const char* fname, sam_hdr_t* bh, GSamFileType ftype=GSamFile_BAM) {
-     w_hdr=bh;
+     hdr=sam_hdr_dup(bh);
      create(fname, ftype);
    }
 
    GSamWriter(const char* fname, sam_hdr_t* bh, GSamFileType ftype=GSamFile_BAM):
-	                                    bam_file(NULL),w_hdr(NULL) {
+	                                    bam_file(NULL),hdr(NULL) {
       create(fname, bh, ftype);
    }
 
    void create(const char* fname, GSamFileType ftype=GSamFile_BAM) {
-      if (w_hdr==NULL)
+      if (hdr==NULL)
          GError("Error: no header data provided for GSamWriter::create()!\n");
 	  kstring_t mode=KS_INITIALIZE;
       kputc('w', &mode);
@@ -356,18 +363,18 @@ class GSamWriter {
       bam_file = hts_open(fname, mode.s);
       if (bam_file==NULL)
          GError("Error: could not create output file %s\n", fname);
-      if (sam_hdr_write(bam_file, w_hdr)<0)
+      if (sam_hdr_write(bam_file, hdr)<0)
     	  GError("Error writing header data to file %s\n", fname);
    }
-
+   sam_hdr_t* header() { return hdr; }
    GSamWriter(const char* fname, const char* hdr_file, GSamFileType ftype=GSamFile_BAM):
-	                                             bam_file(NULL),w_hdr(NULL) {
+	                                             bam_file(NULL),hdr(NULL) {
 	  //create an output file fname with the SAM header copied from hdr_file
       htsFile* samf=hts_open(hdr_file, "r");
       if (samf==NULL)
     	  GError("Error: could not open SAM file %s\n", hdr_file);
-      w_hdr=sam_hdr_read(samf);
-      if (w_hdr==NULL)
+      hdr=sam_hdr_read(samf);
+      if (hdr==NULL)
     	  GError("Error: could not read header data from %s\n", hdr_file);
       hts_close(samf);
       create(fname, ftype);
@@ -375,15 +382,15 @@ class GSamWriter {
 
    ~GSamWriter() {
       hts_close(bam_file);
-      sam_hdr_destroy(w_hdr);
+      sam_hdr_destroy(hdr);
    }
 
-   sam_hdr_t* get_header() { return w_hdr; }
+   sam_hdr_t* get_header() { return hdr; }
 
    int32_t get_tid(const char *seq_name) {
-      if (w_hdr==NULL)
+      if (hdr==NULL)
          GError("Error: missing SAM header (get_tid())\n");
-      return sam_hdr_name2tid(w_hdr, seq_name);
+      return sam_hdr_name2tid(hdr, seq_name);
       }
 
    //just a convenience function for creating a new record, but it's NOT written
@@ -392,7 +399,7 @@ class GSamWriter {
             int pos, bool reverse, const char* qseq, const char* cigar=NULL, const char* qual=NULL) {
       int32_t gseq_tid=get_tid(gseqname);
       if (gseq_tid < 0 && strcmp(gseqname, "*")) {
-            if (w_hdr->n_targets == 0) {
+            if (hdr->n_targets == 0) {
                GError("Error: missing/invalid SAM header\n");
                } else
                    GMessage("Warning: reference '%s' not found in header, will consider it '*'.\n",
@@ -408,7 +415,7 @@ class GSamWriter {
                           GVec<char*>* aux_strings=NULL) {
       int32_t gseq_tid=get_tid(gseqname);
       if (gseq_tid < 0 && strcmp(gseqname, "*")) {
-            if (w_hdr->n_targets == 0) {
+            if (hdr->n_targets == 0) {
                GError("Error: missing/invalid SAM header\n");
                } else
                    GMessage("Warning: reference '%s' not found in header, will consider it '*'.\n",
@@ -433,13 +440,13 @@ class GSamWriter {
 
    void write(GSamRecord* brec) {
       if (brec!=NULL) {
-          if (sam_write1(this->bam_file,this->w_hdr, brec->get_b())<0)
+          if (sam_write1(this->bam_file,this->hdr, brec->b)<0)
         	  GError("Error writing SAM record!\n");
       }
    }
 
    void write(bam1_t* xb) {
-     if (sam_write1(this->bam_file, this->w_hdr, xb)<0)
+     if (sam_write1(this->bam_file, this->hdr, xb)<0)
     	 GError("Error writing SAM record!\n");
    }
 };
