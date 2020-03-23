@@ -54,7 +54,6 @@ void showSAM(GSamRecord* rec) {
    samwriter->write(rec);
 }
 
-
 int main(int argc, char *argv[])  {
     GArgs args(argc, argv, "fasta;fastq;sam;bam;gff;all;help;ref="
         "hBAFSGaqo:r:");
@@ -90,7 +89,8 @@ int main(int argc, char *argv[])  {
         GMessage(USAGE);
         return 1;
     }
-    GSamReader samreader(fname, cram_ref);
+    GSamReader samreader(fname, SAM_QNAME|SAM_FLAG|SAM_RNAME|SAM_POS|SAM_CIGAR|SAM_AUX,
+    		cram_ref);
     //GSamReader samreader(fname);
     FILE* fout=stdout;
     const char* outfname=args.getOpt('o');

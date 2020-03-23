@@ -203,6 +203,21 @@ class GSamReader {
    char* fname;
    sam_hdr_t* hdr;
  public:
+   void bopen(const char* filename, int32_t required_fields,
+		   const char* cram_refseq=NULL) {
+	      hts_file=hts_open(filename, "r");
+	      if (hts_file==NULL)
+	         GError("Error: could not open alignment file %s \n",filename);
+	      if (hts_file->is_cram && cram_refseq!=NULL) {
+	              hts_set_opt(hts_file, CRAM_OPT_REFERENCE, cram_refseq);
+    	  }
+
+          hts_set_opt(hts_file, CRAM_OPT_REQUIRED_FIELDS,
+	    			  required_fields);
+	      fname=Gstrdup(filename);
+	      hdr=sam_hdr_read(hts_file);
+   }
+
    void bopen(const char* filename, const char* cram_refseq=NULL) {
       hts_file=hts_open(filename, "r");
       if (hts_file==NULL)
@@ -212,10 +227,17 @@ class GSamReader {
               hts_set_opt(hts_file, CRAM_OPT_REFERENCE, cram_refseq);
     	  }
     	  else hts_set_opt(hts_file, CRAM_OPT_REQUIRED_FIELDS,
-    			  INT_MAX ^ SAM_SEQ ^ SAM_QUAL ^ SAM_RGAUX);
+    		SAM_QNAME|SAM_FLAG|SAM_RNAME|SAM_POS|SAM_MAPQ|SAM_CIGAR|
+			SAM_RNEXT|SAM_PNEXT|SAM_TLEN|SAM_AUX );
+
       }
       fname=Gstrdup(filename);
       hdr=sam_hdr_read(hts_file);
+   }
+
+   GSamReader(const char* fn, int32_t required_fields,
+		   const char* cram_ref=NULL):hts_file(NULL),fname(NULL), hdr(NULL) {
+      bopen(fn, required_fields, cram_ref);
    }
 
    GSamReader(const char* fn, const char* cram_ref=NULL):hts_file(NULL),fname(NULL), hdr(NULL) {
