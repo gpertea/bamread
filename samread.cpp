@@ -8,7 +8,7 @@ const char* USAGE="Usage:\n samread [--sam|--S|--bam|-B|--fasta|-F|--fastq|-Q|--
  Recognized fields for the --table output option:\n\
   SAM columns: @qname, @flag, @rname, @pos, @mapg, @cigar, @rnext, @pnext,\n\
                @tlen ,@seq, @qual, @aux\n\
-  SAM tag names: use the 2-letter string of the tag name directly; it's value\n\
+  SAM tag names: use the 2-letter string of the tag name directly; its value\n\
                  will be shown instead (or . if tag is not found)\n\
   Special constructs: @end   :the coordinate of the right-most aligned base\n\
                       @exons :comma delimited list of exon segments\n\
