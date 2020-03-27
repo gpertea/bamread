@@ -2,15 +2,27 @@
 #include "GArgs.h"
 #include "GStr.h"
 
-const char* USAGE="Usage:\n  bamread [--sam|--S|--bam|-B|--fasta|-F|--fastq|-Q|--gff|-G] \\\n"
-"	[--ref|-r <ref.fa>] [-A|--all] \\\n"
-"	[-o <outfile>] <in.bam>|<in.sam>\n";
+const char* USAGE="Usage:\n samread [--sam|--S|--bam|-B|--fasta|-F|--fastq|-Q|--gff|-G] \n\
+   [--ref|-r <ref.fa>] [-A|--all] [--table|-t <@samfield1,@samfield2,.. tag1,tag2,...>] \n\
+   [-o <outfile>] <in.bam>|<in.sam>\n\n\
+ Recognized fields for the --table output option:\n\
+  SAM columns: @qname, @flag, @rname, @pos, @mapg, @cigar, @rnext, @pnext,\n\
+               @tlen ,@seq, @qual, @aux\n\
+  SAM tag names: use the 2-letter string of the tag name directly; it's value\n\
+                 will be shown instead (or . if tag is not found)\n\
+  Special constructs: @end   :the coordinate of the right-most aligned base\n\
+                      @exons :comma delimited list of exon segments\n\
+                      @strand :+/- alignment strand from SAM flag data\n\
+                      @tstrand :+/-/. transcription strand as found in\n\
+                                'XS' or 'ts' SAM tags\n\
+";
 
 enum OutType {
   outFASTQ,
   outFASTA,
   outGFF,
   outSAM,
+  outTable
 };
 
 OutType out_type=outFASTQ;

@@ -40,21 +40,21 @@ OBJS := ${GCLDIR}/GBase.o ${GCLDIR}/GArgs.o ${GCLDIR}/GStr.o \
         GSam.o
  
 .PHONY : all
-all:    bamread
-debug:  bamread
+all:    samread
+debug:  samread
 
 $(OBJS) : $(GCLDIR)/GBase.h $(GCLDIR)/GBase.h 
-bamread.o : ./GSam.h
+samread.o : ./GSam.h
 GSam.o : ./GSam.h
 
-bamread: $(OBJS) bamread.o
+samread: $(OBJS) samread.o
 	${LINKER} ${LDFLAGS} $(GCC45OPTS) $(GCC45OPTMAIN) -o $@ ${filter-out %.a %.so, $^} ${LIBS}
 
 # target for removing all object files
 
 .PHONY : clean
 clean:: 
-	@${RM} bamread bamread.o* bamread.exe $(OBJS)
+	@${RM} samread samread.o* samread.exe $(OBJS)
 	@${RM} core.*
 
 
