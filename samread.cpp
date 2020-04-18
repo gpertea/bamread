@@ -3,8 +3,10 @@
 #include "GStr.h"
 
 const char* USAGE="Usage:\n samread [--sam|--S|--bam|-B|--fasta|-F|--fastq|-Q|--gff|-G] \n\
-   [--ref|-r <ref.fa>] [-A|--all] [--table|-t <@samfield1,@samfield2,.. tag1,tag2,...>] \n\
-   [-o <outfile>] <in.bam>|<in.sam>\n\n\
+   [--ref|-r <ref.fa>] [-A|--all] [--table|-T] \n\
+   [-o <outfile>] <in.bam>|<in.sam>\n";
+/*
+		"
  Recognized fields for the --table output option:\n\
   SAM columns: @qname, @flag, @rname, @pos, @mapg, @cigar, @rnext, @pnext,\n\
                @tlen ,@seq, @qual, @aux\n\
@@ -16,13 +18,13 @@ const char* USAGE="Usage:\n samread [--sam|--S|--bam|-B|--fasta|-F|--fastq|-Q|--
                       @tstrand :+/-/. transcription strand as found in\n\
                                 'XS' or 'ts' SAM tags\n\
 ";
-
+*/
 enum OutType {
   outFASTQ,
   outFASTA,
   outGFF,
-  outSAM,
-  outTable
+  outTable,
+  outSAM
 };
 
 OutType out_type=outFASTQ;
@@ -61,14 +63,31 @@ void showgff(GSamRecord& rec, FILE* fout) {
      }
 }
 
+void showTable(GSamRecord& rec, FILE* fout) {
+	static const char* dot=".";
+	if (rec.isUnmapped()) return;
+	char tstrand=rec.spliceStrand();
+	const char* md=rec.tag_str("MD");
+	if (md==NULL) md=dot;
+	// readName, refName, start, tstrand, cigar, exons, MD
+	GStr exons;
+	for (int i=0;i<rec.exons.Count();i++) {
+		exons+=rec.exons[i].start;exons+='-';
+		exons+=rec.exons[i].end;
+		if (i+1<rec.exons.Count()) exons+=',';
+	}
+	fprintf(fout, "%s\t%s\t%d\t%c\t%s\t%s\t%s\n",rec.name(), rec.refName(),
+			rec.start, tstrand, rec.cigar(), exons.chars(), md);
+}
+
 void showSAM(GSamRecord* rec) {
   if (!all_reads && rec->isUnmapped()) return;
    samwriter->write(rec);
 }
 
 int main(int argc, char *argv[])  {
-    GArgs args(argc, argv, "fasta;fastq;sam;bam;gff;all;help;ref="
-        "hBAFSGaqo:r:");
+    GArgs args(argc, argv, "fasta;fastq;sam;bam;gff;all;table;help;ref="
+        "hBAFTSGaqo:r:");
     args.printError(USAGE, true);
     bool outBAM=false;
     if (args.getOpt('h') || args.getOpt("help") || args.startNonOpt()==0) {
@@ -87,6 +106,10 @@ int main(int argc, char *argv[])  {
        out_type=outGFF;
        all_reads=false;
        }
+    else if (args.getOpt('T') || args.getOpt("table")) {
+       out_type=outTable;
+       all_reads=false;
+       }
     else if (args.getOpt('S') || args.getOpt("sam") ||
     		args.getOpt('B') || args.getOpt("bam")) {
         out_type=outSAM;
@@ -103,7 +126,6 @@ int main(int argc, char *argv[])  {
     }
     GSamReader samreader(fname, SAM_QNAME|SAM_FLAG|SAM_RNAME|SAM_POS|SAM_CIGAR|SAM_AUX,
     		cram_ref);
-    //GSamReader samreader(fname);
     FILE* fout=stdout;
     const char* outfname=args.getOpt('o');
     if (outfname) {
@@ -131,6 +153,12 @@ int main(int argc, char *argv[])  {
     else if (out_type==outGFF) {
         while ((aln=samreader.next())!=NULL) {
            showgff(*aln, fout);
+           delete aln;
+        }
+    }
+    else if (out_type==outTable) {
+        while ((aln=samreader.next())!=NULL) {
+           showTable(*aln, fout);
            delete aln;
         }
     }
