@@ -19,6 +19,7 @@ enum GSamFileType {
 class GSamRecord: public GSeg {
    friend class GSamReader;
    friend class GSamWriter;
+protected:
    bam1_t* b;
    // b->data has the following strings concatenated:
    //  qname (including the terminal \0)
@@ -37,6 +38,8 @@ class GSamRecord: public GSeg {
       };
    };
    sam_hdr_t* b_hdr;
+   char* get_cigar(); //gets the CIGAR string from b, returned string must be deallocated by caller
+
  public:
    GVec<GSeg> exons; //coordinates will be 1-based
    int clipL; //soft clipping data, as seen in the CIGAR string
@@ -61,7 +64,7 @@ class GSamRecord: public GSeg {
       else {
            b=from_b; //it'll take over from_b
            novel=b_free;
-           _cigar=cigar();
+           _cigar=get_cigar();
            _read=name();
       }
 
@@ -205,7 +208,7 @@ class GSamRecord: public GSeg {
  char spliceStrand(); // '+', '-' from the XS tag, or '.' if no XS tag
  char* sequence(); //user should free after use
  char* qualities();//user should free after use
- char* cigar(); //returns text version of the CIGAR string; user must free
+ const char* cigar() { return _cigar; } //returns text version of the CIGAR string
 };
 
 // from sam.c:

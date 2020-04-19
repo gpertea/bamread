@@ -40,8 +40,7 @@ OBJS := ${GCLDIR}/GBase.o ${GCLDIR}/GArgs.o ${GCLDIR}/GStr.o \
         GSam.o
  
 .PHONY : all
-all:    samread
-debug:  samread
+all release static debug: samread
 
 $(OBJS) : $(GCLDIR)/GBase.h $(GCLDIR)/GBase.h 
 samread.o : ./GSam.h

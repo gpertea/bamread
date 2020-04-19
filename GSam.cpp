@@ -99,6 +99,7 @@ void GSamRecord::set_cigar(const char* str) {
    //requires b->core.pos and b->core.flag to have been set properly PRIOR to this call
   // also expects the b record memory to not be allocated already (fresh record creation)
   if (b==NULL) GError("Error: invalid call to ::set_cigar() (b is NULL)\n");
+  GFREE(_cigar);
   //SAM header ptr is in b_hdr
   char *p = const_cast<char*>(str);
   bam1_core_t *c = &b->core;
@@ -134,7 +135,8 @@ void GSamRecord::set_cigar(const char* str) {
   _parse_err(HTS_POS_MAX - cigreflen <= c->pos,
              "read ends beyond highest supported position");
   c->bin = hts_reg2bin(c->pos, c->pos + cigreflen, 14, 5);
-
+  //--
+  _cigar=get_cigar();
 }
 
 
@@ -468,7 +470,7 @@ switch (cop) {
    return qv;
  }
 
- char* GSamRecord::cigar() { //returns text version of the CIGAR string; must be freed by user
+ char* GSamRecord::get_cigar() { //returns text version of the CIGAR string; must be freed by user
    kstring_t str = KS_INITIALIZE;
    if (b->core.n_cigar == 0) kputc('*', &str);
     else {
