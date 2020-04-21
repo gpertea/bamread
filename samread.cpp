@@ -3,7 +3,7 @@
 #include "GStr.h"
 
 const char* USAGE="Usage:\n samread [--sam|--S|--bam|-B|--fasta|-F|--fastq|-Q|--gff|-G] \n\
-   [--ref|-r <ref.fa>] [-A|--all] [--table|-T] \n\
+   [--ref|-r <ref.fa>] [-A|--all] [--table|-T] [-Y] \n\
    [-o <outfile>] <in.bam>|<in.sam>\n";
 /*
 		"
@@ -29,6 +29,7 @@ enum OutType {
 
 OutType out_type=outFASTQ;
 bool all_reads=false; //including unmapped
+bool addYC=false;
 GSamWriter* samwriter=NULL;
 
 void showfastq(GSamRecord& rec, FILE* fout) {
@@ -76,8 +77,14 @@ void showTable(GSamRecord& rec, FILE* fout) {
 		exons+=rec.exons[i].end;
 		if (i+1<rec.exons.Count()) exons+=',';
 	}
-	fprintf(fout, "%s\t%s\t%d\t%c\t%s\t%s\t%s\n",rec.name(), rec.refName(),
+	fprintf(fout, "%s\t%s\t%d\t%c\t%s\t%s\t%s",rec.name(), rec.refName(),
 			rec.start, tstrand, rec.cigar(), exons.chars(), md);
+	if (addYC) {
+		int v=rec.tag_int("YC");
+		if (v==0) v=1;
+		fprintf(fout, "\t%d", v);
+	}
+    fprintf(fout, "\n");
 }
 
 void showSAM(GSamRecord* rec) {
@@ -87,17 +94,16 @@ void showSAM(GSamRecord* rec) {
 
 int main(int argc, char *argv[])  {
     GArgs args(argc, argv, "fasta;fastq;sam;bam;gff;all;table;help;ref="
-        "hBAFTSGaqo:r:");
+        "hBAFTSGYaqo:r:");
     args.printError(USAGE, true);
     bool outBAM=false;
     if (args.getOpt('h') || args.getOpt("help") || args.startNonOpt()==0) {
       GMessage(USAGE);
       return 1;
-      }
+    }
     //args.printCmdLine(stderr);
-
     all_reads=(args.getOpt('A') || args.getOpt("all"));
-
+    addYC=args.getOpt('Y');
     //mapped_only=(args.getOpt('M') || args.getOpt("mapped-only"));
 
     if (args.getOpt('F') || args.getOpt("fasta"))
@@ -105,11 +111,11 @@ int main(int argc, char *argv[])  {
     else if (args.getOpt('G') || args.getOpt("gff")) {
        out_type=outGFF;
        all_reads=false;
-       }
+    }
     else if (args.getOpt('T') || args.getOpt("table")) {
        out_type=outTable;
        all_reads=false;
-       }
+    }
     else if (args.getOpt('S') || args.getOpt("sam") ||
     		args.getOpt('B') || args.getOpt("bam")) {
         out_type=outSAM;
