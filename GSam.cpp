@@ -1,5 +1,6 @@
 #include "GSam.h"
 #include <ctype.h>
+/*
 //for bam1_t (re)allocation functions:
 // sam_realloc_bam_data(), realloc_bam_data(), possibly_expand_bam_data()
 #include "sam_internal.h"
@@ -10,13 +11,14 @@
 #define  _get_bmem(type_t, x, b, l) if (possibly_expand_bam_data((b), (l)) < 0) \
  GError("Error: cannot allocate SAM data\n"); \
  *(x) = (type_t*)((b)->data + (b)->l_data); (b)->l_data += (l)
+*/
 #define _parse_err(cond, msg) if (cond) GError("Error [SAM parsing]: %s\n",msg);
 #define _parse_warn(cond, msg) if (cond) GMessage("Warning [SAM parsing]: %s\n",msg);
 #define _parse_mem_err() GError("Error [SAM parsing]: memory allocation problem!\n");
 
 #define _cigOp(c) ((c)&BAM_CIGAR_MASK)
 #define _cigLen(c) ((c)>>BAM_CIGAR_SHIFT)
-
+/*
 GSamRecord::GSamRecord(const char* qname, int32_t gseq_tid,
                  int pos, bool reverse, const char* qseq,
                  const char* cigar, const char* quals):iflags(0), exons(1),
@@ -94,12 +96,13 @@ GSamRecord::GSamRecord(const char* qname, int32_t samflags, int32_t g_tid,
        }
     }
 }
+*/
 
+/*
 void GSamRecord::set_cigar(const char* str) {
    //requires b->core.pos and b->core.flag to have been set properly PRIOR to this call
   // also expects the b record memory to not be allocated already (fresh record creation)
   if (b==NULL) GError("Error: invalid call to ::set_cigar() (b is NULL)\n");
-  GFREE(_cigar);
   //SAM header ptr is in b_hdr
   char *p = const_cast<char*>(str);
   bam1_core_t *c = &b->core;
@@ -135,8 +138,7 @@ void GSamRecord::set_cigar(const char* str) {
   _parse_err(HTS_POS_MAX - cigreflen <= c->pos,
              "read ends beyond highest supported position");
   c->bin = hts_reg2bin(c->pos, c->pos + cigreflen, 14, 5);
-  //--
-  _cigar=get_cigar();
+
 }
 
 
@@ -181,7 +183,7 @@ void GSamRecord::set_cigar(const char* str) {
    //uint8_t* p=bam_get_qual(b);
    for (int i=0;i < b->core.l_qseq; i++) t[i] = quals[i]-33;
  }
-
+*/
  void GSamRecord::add_aux(const char* str) {
      //requires: being called AFTER add_quals() for built-from-scratch records
      //--check the "// aux" section in sam_parse1() htslib/sam.c
@@ -347,6 +349,7 @@ switch (cop) {
 } // interpret_CIGAR(), just a reference of CIGAR operations interpretation
 
  void GSamRecord::setupCoordinates() {
+	if (!b) return;
 	const bam1_core_t *c = &b->core;
 	if (c->flag & BAM_FUNMAP) return; /* skip unmapped reads */
 	uint32_t *cigar = bam_get_cigar(b);
@@ -398,6 +401,13 @@ switch (cop) {
    return bam_aux_get(this->b, tag);
  }
 
+ int GSamRecord::remove_tag(const char tag[2]) {
+   uint8_t* p=bam_aux_get(this->b, tag);
+   if (p!=NULL) return bam_aux_del(this->b, p);
+   return 0;
+ }
+
+
  char GSamRecord::tag_char(const char tag[2]) { //retrieve tag data as single char
    uint8_t* s=find_tag(tag);
    if (s) return ( bam_aux2A(s) );
@@ -414,10 +424,10 @@ switch (cop) {
  	else return 0;
  }
 
- int64_t GSamRecord::tag_int(const char tag[2]) { //get the numeric value of tag
+ int64_t GSamRecord::tag_int(const char tag[2], int nfval) { //get the numeric value of tag
    uint8_t *s=find_tag(tag);
    if (s) return ( bam_aux2i(s) );
-   return 0;
+   return nfval;
  }
 
  double GSamRecord::tag_float(const char tag[2]) { //get the float value of tag
@@ -470,7 +480,7 @@ switch (cop) {
    return qv;
  }
 
- char* GSamRecord::get_cigar() { //returns text version of the CIGAR string; must be freed by user
+ char* GSamRecord::cigar() { //returns text version of the CIGAR string; must be freed by user
    kstring_t str = KS_INITIALIZE;
    if (b->core.n_cigar == 0) kputc('*', &str);
     else {

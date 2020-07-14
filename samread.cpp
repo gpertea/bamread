@@ -4,7 +4,7 @@
 
 const char* USAGE="Usage:\n samread [--sam|--S|--bam|-B|--fasta|-F|--fastq|-Q|--gff|-G] \n\
    [--ref|-r <ref.fa>] [-A|--all] [--table|-T] [-Y] \n\
-   [-o <outfile>] <in.bam>|<in.sam>\n";
+   [-o <outfile>] <in.bam>|<in.sam> ..\n";
 /*
 		"
  Recognized fields for the --table output option:\n\
@@ -56,8 +56,9 @@ void showfasta(GSamRecord& rec, FILE* fout) {
 void showgff(GSamRecord& rec, FILE* fout) {
   if (rec.isUnmapped()) return;
   char tstrand=rec.spliceStrand();
-  fprintf(fout, "%s\tbam\tmRNA\t%d\t%d\t.\t%c\t.\tID=%s\n", rec.refName(),
-         rec.start, rec.end, tstrand, rec.name());
+  char alnstrand=rec.alnStrand();
+  fprintf(fout, "%s\tbam\tmRNA\t%d\t%d\t.\t%c\t.\tID=%s;aln_strand=%c;num_exons=%d\n", rec.refName(),
+         rec.start, rec.end, tstrand, rec.name(), alnstrand, rec.exons.Count());
   for (int i=0;i<rec.exons.Count();i++) {
     fprintf(fout, "%s\tbam\texon\t%d\t%d\t.\t%c\t.\tParent=%s\n", rec.refName(),
            rec.exons[i].start, rec.exons[i].end, tstrand, rec.name());
@@ -87,9 +88,9 @@ void showTable(GSamRecord& rec, FILE* fout) {
     fprintf(fout, "\n");
 }
 
-void showSAM(GSamRecord* rec) {
-  if (!all_reads && rec->isUnmapped()) return;
-   samwriter->write(rec);
+void showSAM(GSamRecord& rec) {
+  if (!all_reads && rec.isUnmapped()) return;
+   samwriter->write(&rec);
 }
 
 int main(int argc, char *argv[])  {
@@ -125,63 +126,69 @@ int main(int argc, char *argv[])  {
     char* cram_ref=NULL;
     cram_ref=args.getOpt('r');
     if (cram_ref==NULL) cram_ref=args.getOpt("ref");
-    char* fname=args.nextNonOpt();
-    if (fname==NULL || fname[0]==0) {
-        GMessage(USAGE);
-        return 1;
-    }
-    GSamReader samreader(fname, SAM_QNAME|SAM_FLAG|SAM_RNAME|SAM_POS|SAM_CIGAR|SAM_AUX,
-    		cram_ref);
-    FILE* fout=stdout;
-    const char* outfname=args.getOpt('o');
-    if (outfname) {
-     if (out_type != outSAM) {
-       fout=fopen(outfname, "w");
-       if (fout==NULL) {
-           fprintf(stderr, "Error creating output file %s\n", outfname);
-           return 2;
-       }
-     }
-    }
-    if (out_type==outSAM) {
-    	if (outfname==NULL) outfname="-";
-    	GSamFileType st=outBAM ? GSamFile_BAM : GSamFile_SAM;
-    	samwriter=new GSamWriter(outfname, samreader.header(), st);
-    }
 
-    GSamRecord *aln=NULL;
-    if (out_type==outFASTA) {
-        while ((aln=samreader.next())!=NULL) {
-           showfasta(*aln, fout);
-           delete aln;
-        }
+
+    char* fname=NULL;
+	FILE* fout=stdout;
+	const char* outfname=args.getOpt('o');
+	if (outfname) {
+	 if (out_type != outSAM) {
+	   fout=fopen(outfname, "w");
+	   if (fout==NULL) {
+		   fprintf(stderr, "Error creating output file %s\n", outfname);
+		   return 2;
+	   }
+	 }
+	}
+	if (out_type==outSAM) {
+		if (outfname==NULL) outfname="-";
+	}
+
+    while ((fname=args.nextNonOpt())) {
+    	if (fileExists(fname)<2) {
+    		GError("Error: %s is not a valid file\n",fname);
+    	}
     }
-    else if (out_type==outGFF) {
-        while ((aln=samreader.next())!=NULL) {
-           showgff(*aln, fout);
-           delete aln;
-        }
+	bool writerCreated=false;
+	args.startNonOpt(); //start parsing again the non-option arguments
+    while ((fname=args.nextNonOpt())) {
+		GSamReader samreader(fname, SAM_QNAME|SAM_FLAG|SAM_RNAME|SAM_POS|SAM_CIGAR|SAM_AUX,
+				cram_ref);
+		if (out_type==outSAM && !writerCreated) {
+		   GSamFileType st=outBAM ? GSamFile_BAM : GSamFile_SAM;
+		   samwriter=new GSamWriter(outfname, samreader.header(), st);
+		   writerCreated=true;
+		}
+
+		GSamRecord aln;
+		if (out_type==outFASTA) {
+			while (samreader.next(aln)) {
+			   showfasta(aln, fout);
+			}
+		}
+		else if (out_type==outGFF) {
+			while (samreader.next(aln)) {
+			   showgff(aln, fout);
+			}
+		}
+		else if (out_type==outTable) {
+			while (samreader.next(aln)) {
+			   showTable(aln, fout);
+			}
+		}
+		else if (out_type==outSAM) {
+			while (samreader.next(aln)) {
+			   showSAM(aln);
+			}
+		}
+		else { //default: FASTQ output
+			while (samreader.next(aln)) {
+			  showfastq(aln, fout);
+			}
+		}
     }
-    else if (out_type==outTable) {
-        while ((aln=samreader.next())!=NULL) {
-           showTable(*aln, fout);
-           delete aln;
-        }
-    }
-    else if (out_type==outSAM) {
-        while ((aln=samreader.next())!=NULL) {
-           showSAM(aln);
-           delete aln;
-        }
-    }
-    else { //default: FASTQ output
-        while ((aln=samreader.next())!=NULL) {
-          showfastq(*aln, fout);
-          delete aln;
-        }
-    }
-    if (out_type==outSAM) {
-    	delete samwriter;
-    } else  if (fout!=stdout) fclose(fout);
+	if (out_type==outSAM) {
+		delete samwriter;
+	} else  if (fout!=stdout) fclose(fout);
     return 0;
 }

@@ -16,7 +16,7 @@ endif
 CC      := g++
 
 BASEFLAGS  := -Wall -Wextra ${SEARCHDIRS} $(MARCH) \
- -D_REENTRANT -fno-strict-aliasing -fno-exceptions -fno-rtti
+ -D_REENTRANT -std=c++11 -fno-strict-aliasing -fno-exceptions -fno-rtti
 
 #add the link-time optimization flag if gcc version > 4.5
 
