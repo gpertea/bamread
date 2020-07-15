@@ -1,6 +1,7 @@
 #include "GSam.h"
 #include "GArgs.h"
 #include "GStr.h"
+#include "GHash.hh"
 
 const char* USAGE="Usage:\n samread [--sam|--S|--bam|-B|--fasta|-F|--fastq|-Q|--gff|-G] \n\
    [--ref|-r <ref.fa>] [-A|--all] [--table|-T] [-Y] \n\
@@ -32,6 +33,10 @@ bool all_reads=false; //including unmapped
 bool addYC=false;
 GSamWriter* samwriter=NULL;
 
+GHash<int> rnames;
+int last_refid=-1;
+
+
 void showfastq(GSamRecord& rec, FILE* fout) {
   if (rec.isUnmapped() && !all_reads) return;
   char* qseq=rec.sequence();
@@ -53,15 +58,32 @@ void showfasta(GSamRecord& rec, FILE* fout) {
   GFREE(qseq);
 }
 
+int getAlnId(GSamRecord& rec) {
+	if (rec.refId()!=last_refid) {
+		last_refid=rec.refId();
+		rnames.Clear();
+	}
+	if (rec.isPrimary())
+		return 1;
+    int* c=rnames.Find(rec.name());
+    if (c) {
+    	(*c)++;
+    	return *c;
+    }
+    rnames.Add(rec.name(), new int(2));
+    return 2;
+}
+
 void showgff(GSamRecord& rec, FILE* fout) {
   if (rec.isUnmapped()) return;
   char tstrand=rec.spliceStrand();
   char alnstrand=rec.alnStrand();
-  fprintf(fout, "%s\tbam\tmRNA\t%d\t%d\t.\t%c\t.\tID=%s;aln_strand=%c;num_exons=%d\n", rec.refName(),
-         rec.start, rec.end, tstrand, rec.name(), alnstrand, rec.exons.Count());
+  int alnid=getAlnId(rec);
+  fprintf(fout, "%s\tbam\tmRNA\t%d\t%d\t.\t%c\t.\tID=%s.%d;aln_strand=%c;num_exons=%d\n", rec.refName(),
+         rec.start, rec.end, tstrand, rec.name(), alnid, alnstrand, rec.exons.Count());
   for (int i=0;i<rec.exons.Count();i++) {
-    fprintf(fout, "%s\tbam\texon\t%d\t%d\t.\t%c\t.\tParent=%s\n", rec.refName(),
-           rec.exons[i].start, rec.exons[i].end, tstrand, rec.name());
+    fprintf(fout, "%s\tbam\texon\t%d\t%d\t.\t%c\t.\tParent=%s.%d\n", rec.refName(),
+           rec.exons[i].start, rec.exons[i].end, tstrand, rec.name(), alnid);
      }
 }
 
