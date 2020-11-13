@@ -1,6 +1,7 @@
 GCLDIR := ../gclib
 HTSLIB := ../htslib
-LIBDEFLATE := /ccb/sw/lib/libdeflate.a
+#my branch of htslib includes libdeflate:
+LIBDEFLATE := ${HTSLIB}/libdeflate/libdeflate.a
 
 SEARCHDIRS := -I. -I${GCLDIR} -I${HTSLIB}
 
