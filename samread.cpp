@@ -1,7 +1,7 @@
 #include "GSam.h"
 #include "GArgs.h"
 #include "GStr.h"
-#include "GHash.hh"
+#include "GHashMap.hh"
 
 const char* USAGE="Usage:\n samread [--sam|--S|--bam|-B|--fasta|-F|--fastq|-Q|--gff|-G] \n\
    [--ref|-r <ref.fa>] [-A|--all] [--table|-T] [-Y] \n\
@@ -70,7 +70,7 @@ int getAlnId(GSamRecord& rec) {
     	(*c)++;
     	return *c;
     }
-    rnames.Add(rec.name(), new int(2));
+    rnames.Add(rec.name(), 2);
     return 2;
 }
 
@@ -150,7 +150,7 @@ int main(int argc, char *argv[])  {
     if (cram_ref==NULL) cram_ref=args.getOpt("ref");
 
 
-    char* fname=NULL;
+    const char* fname=NULL;
 	FILE* fout=stdout;
 	const char* outfname=args.getOpt('o');
 	if (outfname) {
@@ -167,10 +167,13 @@ int main(int argc, char *argv[])  {
 	}
 
     while ((fname=args.nextNonOpt())) {
-    	if (fileExists(fname)<2) {
+    	GStr infn(fname);
+    	if (infn!="-")
+    	  if (fileExists(fname)<2) {
     		GError("Error: %s is not a valid file\n",fname);
-    	}
+    	  }
     }
+
 	bool writerCreated=false;
 	args.startNonOpt(); //start parsing again the non-option arguments
     while ((fname=args.nextNonOpt())) {
