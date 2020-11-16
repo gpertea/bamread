@@ -4,7 +4,7 @@
 #include "GHashMap.hh"
 
 const char* USAGE="Usage:\n samread [--sam|--S|--bam|-B|--fasta|-F|--fastq|-Q|--gff|-G] \n\
-   [--ref|-r <ref.fa>] [-A|--all] [--table|-T] [-Y] \n\
+   [--ref|-r <ref.fa>] [-A|--all] [--table|-T] [-Y] [--nstrand] \n\
    [-o <outfile>] <in.bam>|<in.sam> ..\n";
 /*
 		"
@@ -31,6 +31,7 @@ enum OutType {
 OutType out_type=outFASTQ;
 bool all_reads=false; //including unmapped
 bool addYC=false;
+bool nstrand=false; //--nstrand enforce '.' strand for unspliced alignments
 GSamWriter* samwriter=NULL;
 
 GHash<int> rnames;
@@ -100,6 +101,7 @@ void showTable(GSamRecord& rec, FILE* fout) {
 		exons+=rec.exons[i].end;
 		if (i+1<rec.exons.Count()) exons+=',';
 	}
+	if (nstrand && rec.exons.Count()==1) tstrand='.';
 	fprintf(fout, "%s\t%s\t%d\t%c\t%s\t%s\t%s",rec.name(), rec.refName(),
 			rec.start, tstrand, rec.cigar(), exons.chars(), md);
 	if (addYC) {
@@ -116,7 +118,7 @@ void showSAM(GSamRecord& rec) {
 }
 
 int main(int argc, char *argv[])  {
-    GArgs args(argc, argv, "fasta;fastq;sam;bam;gff;all;table;help;ref="
+    GArgs args(argc, argv, "fasta;fastq;sam;nstrand;bam;gff;all;table;help;ref="
         "hBAFTSGYaqo:r:");
     args.printError(USAGE, true);
     bool outBAM=false;
@@ -127,6 +129,7 @@ int main(int argc, char *argv[])  {
     //args.printCmdLine(stderr);
     all_reads=(args.getOpt('A') || args.getOpt("all"));
     addYC=args.getOpt('Y');
+    nstrand=args.getOpt("nstrand");
     //mapped_only=(args.getOpt('M') || args.getOpt("mapped-only"));
 
     if (args.getOpt('F') || args.getOpt("fasta"))
