@@ -41,6 +41,11 @@ LINKER  := g++
 LIBS := ${HTSLIB}/libhts.a ${LIBLZMA} ${LIBDEFLATE} -lbz2 -lz -lm -lpthread
 OBJS := ${GCLDIR}/GBase.o ${GCLDIR}/GArgs.o ${GCLDIR}/GStr.o \
         GSam.o
+
+# Compiling for Windows with MinGW?
+ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
+LIBS += -lregex -lwsock32 -lws2_32
+endif
  
 .PHONY : all
 all release static debug: samread
