@@ -1,8 +1,10 @@
 GCLDIR := ../gclib
+## assumed htslib has been pulled from https://github.com/gpertea/htslib 
+## (branch for_gclib) and setup_build.sh script was run in that directory
 HTSLIB := ../htslib
 #my branch of htslib includes libdeflate:
-LIBDEFLATE := ${HTSLIB}/libdeflate/libdeflate.a
-
+LIBDEFLATE := ${HTSLIB}/xlibs/lib/libdeflate.a
+LIBLZMA := ${HTSLIB}/xlibs/lib/liblzma.a
 SEARCHDIRS := -I. -I${GCLDIR} -I${HTSLIB}
 
 SYSTYPE :=     $(shell uname)
@@ -36,7 +38,7 @@ endif
 # C/C++ linker
 
 LINKER  := g++
-LIBS := ${HTSLIB}/libhts.a ${LIBDEFLATE} -llzma -lbz2 -lz -lm -lcurl -lcrypto -lpthread
+LIBS := ${HTSLIB}/libhts.a ${LIBLZMA} ${LIBDEFLATE} -lbz2 -lz -lm -lpthread
 OBJS := ${GCLDIR}/GBase.o ${GCLDIR}/GArgs.o ${GCLDIR}/GStr.o \
         GSam.o
  
