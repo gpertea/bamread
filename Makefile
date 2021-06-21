@@ -1,11 +1,11 @@
-GCLDIR := ../gclib
+GDIR := ../gclib
 
 ## assumed htslib has been pulled from https://github.com/gpertea/htslib
 HTSLIB := ../htslib
 #my branch of htslib includes libdeflate:
 LIBDEFLATE := ${HTSLIB}/xlibs/lib/libdeflate.a
 LIBLZMA := ${HTSLIB}/xlibs/lib/liblzma.a
-SEARCHDIRS := -I. -I${GCLDIR} -I${HTSLIB}
+INCDIRS := -I. -I${GDIR} -I${HTSLIB}
 
 SYSTYPE :=     $(shell uname)
 
@@ -18,7 +18,7 @@ endif
 
 CC      := g++
 
-BASEFLAGS  := -Wall -Wextra ${SEARCHDIRS} $(MARCH) \
+BASEFLAGS  := -Wall -Wextra ${INCDIRS} $(MARCH) \
  -D_REENTRANT -std=c++11 -fno-strict-aliasing -fno-exceptions -fno-rtti
 
 #add the link-time optimization flag if gcc version > 4.5
@@ -39,7 +39,7 @@ endif
 
 LINKER  := g++
 LIBS := ${HTSLIB}/libhts.a ${LIBLZMA} ${LIBDEFLATE} -lbz2 -lz -lm -lpthread
-OBJS := ${GCLDIR}/GBase.o ${GCLDIR}/GArgs.o ${GCLDIR}/GStr.o \
+OBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o \
         GSam.o
 
 # Compiling for Windows with MinGW?
@@ -50,7 +50,7 @@ endif
 .PHONY : all
 all release static debug: samread
 
-$(OBJS) : $(GCLDIR)/GBase.h $(GCLDIR)/GBase.h 
+$(OBJS) : $(GDIR)/GBase.h $(GDIR)/GBase.h 
 samread.o : ./GSam.h
 GSam.o : ./GSam.h
 
