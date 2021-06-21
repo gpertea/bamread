@@ -1,6 +1,6 @@
 GCLDIR := ../gclib
-## assumed htslib has been pulled from https://github.com/gpertea/htslib 
-## (branch for_gclib) and build_lib.sh script was run in that directory
+
+## assumed htslib has been pulled from https://github.com/gpertea/htslib
 HTSLIB := ../htslib
 #my branch of htslib includes libdeflate:
 LIBDEFLATE := ${HTSLIB}/xlibs/lib/libdeflate.a
