@@ -1,6 +1,6 @@
 GCLDIR := ../gclib
 ## assumed htslib has been pulled from https://github.com/gpertea/htslib 
-## (branch for_gclib) and setup_build.sh script was run in that directory
+## (branch for_gclib) and build_lib.sh script was run in that directory
 HTSLIB := ../htslib
 #my branch of htslib includes libdeflate:
 LIBDEFLATE := ${HTSLIB}/xlibs/lib/libdeflate.a
@@ -44,9 +44,9 @@ OBJS := ${GCLDIR}/GBase.o ${GCLDIR}/GArgs.o ${GCLDIR}/GStr.o \
 
 # Compiling for Windows with MinGW?
 ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
-LIBS += -lregex -lws2_32
+ LIBS += -lregex -lws2_32
 endif
- 
+
 .PHONY : all
 all release static debug: samread
 
@@ -54,7 +54,10 @@ $(OBJS) : $(GCLDIR)/GBase.h $(GCLDIR)/GBase.h
 samread.o : ./GSam.h
 GSam.o : ./GSam.h
 
-samread: $(OBJS) samread.o
+${HTSLIB}/libhts.a: 
+	cd ${HTSLIB} && ./build_lib.sh
+
+samread: ${HTSLIB}/libhts.a $(OBJS) samread.o
 	${LINKER} ${LDFLAGS} $(GCC45OPTS) $(GCC45OPTMAIN) -o $@ ${filter-out %.a %.so, $^} ${LIBS}
 
 # target for removing all object files
