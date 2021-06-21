@@ -44,7 +44,7 @@ OBJS := ${GCLDIR}/GBase.o ${GCLDIR}/GArgs.o ${GCLDIR}/GStr.o \
 
 # Compiling for Windows with MinGW?
 ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
-LIBS += -lregex -lwsock32 -lws2_32
+LIBS += -lregex -lws2_32
 endif
  
 .PHONY : all
