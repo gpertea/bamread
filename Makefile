@@ -42,7 +42,7 @@ LIBS := ${HTSLIB}/libhts.a ${LIBLZMA} ${LIBDEFLATE} -lbz2 -lz -lm -lpthread
 OBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o \
         GSam.o
 
-# Compiling for Windows with MinGW?
+# Compiling for Windows with MinGW/MSYS2?
 ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
  LIBS += -lregex -lws2_32
 endif
