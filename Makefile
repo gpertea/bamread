@@ -5,6 +5,7 @@ HTSLIB := ../htslib
 #my branch of htslib includes libdeflate:
 LIBDEFLATE := ${HTSLIB}/xlibs/lib/libdeflate.a
 LIBLZMA := ${HTSLIB}/xlibs/lib/liblzma.a
+LIBBZ2 := ${HTSLIB}/xlibs/lib/libbz2.a
 INCDIRS := -I. -I${GDIR} -I${HTSLIB}
 
 SYSTYPE :=     $(shell uname)
@@ -23,7 +24,6 @@ BASEFLAGS  := -Wall -Wextra ${INCDIRS} $(MARCH) \
 
 #add the link-time optimization flag if gcc version > 4.5
 
-
 ifeq ($(findstring release,$(MAKECMDGOALS)),)
   CFLAGS := -g -DDEBUG -D_DEBUG -DGDEBUG $(BASEFLAGS)
   LDFLAGS := -g -L${HTSLIB}
@@ -32,13 +32,25 @@ else
   LDFLAGS := -g -L${HTSLIB}
 endif
 
+
+ifneq ($(findstring static,$(MAKECMDGOALS)),) 
+ # static or static-cpp found
+ ifneq ($(findstring static-cpp,$(MAKECMDGOALS)),) 
+    #not a full static build, only c/c++ libs
+    LDFLAGS := -static-libgcc -static-libstdc++ ${LDFLAGS}
+ else
+    #full static build
+    LDFLAGS := -static -static-libgcc -static-libstdc++ ${LDFLAGS}
+ endif
+endif
+
 %.o : %.cpp
 	${CC} ${CFLAGS} -c $< -o $@
 
 # C/C++ linker
 
 LINKER  := g++
-LIBS := ${HTSLIB}/libhts.a ${LIBLZMA} ${LIBDEFLATE} -lbz2 -lz -lm -lpthread
+LIBS := ${HTSLIB}/libhts.a ${LIBLZMA} ${LIBDEFLATE} ${LIBBZ2} -lz -lm -lpthread
 OBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o \
         GSam.o
 
@@ -48,7 +60,7 @@ ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
 endif
 
 .PHONY : all
-all release static debug: samread
+all release static static-cpp debug: samread
 
 $(OBJS) : $(GDIR)/GBase.h $(GDIR)/GBase.h 
 samread.o : ./GSam.h
