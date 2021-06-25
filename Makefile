@@ -22,16 +22,15 @@ CC      := g++
 BASEFLAGS  := -Wall -Wextra ${INCDIRS} $(MARCH) \
  -D_REENTRANT -std=c++11 -fno-strict-aliasing -fno-exceptions -fno-rtti
 
-#add the link-time optimization flag if gcc version > 4.5
 
-ifeq ($(findstring release,$(MAKECMDGOALS)),)
-  CFLAGS := -g -DDEBUG -D_DEBUG -DGDEBUG $(BASEFLAGS)
-  LDFLAGS := -g -L${HTSLIB}
-else
+ifneq (,$(filter %release %static %static-cpp, $(MAKECMDGOALS)))
+  #release build
   CFLAGS := -g -O2 -DNDEBUG $(BASEFLAGS)
   LDFLAGS := -g -L${HTSLIB}
+else
+  CFLAGS := -g -DDEBUG -D_DEBUG -DGDEBUG $(BASEFLAGS)
+  LDFLAGS := -g -L${HTSLIB}
 endif
-
 
 ifneq ($(findstring static,$(MAKECMDGOALS)),) 
  # static or static-cpp found
