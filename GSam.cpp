@@ -18,46 +18,33 @@
 
 #define _cigOp(c) ((c)&BAM_CIGAR_MASK)
 #define _cigLen(c) ((c)>>BAM_CIGAR_SHIFT)
-/*
+
 GSamRecord::GSamRecord(const char* qname, int32_t gseq_tid,
-                 int pos, bool reverse, const char* qseq,
-                 const char* cigar, const char* quals):iflags(0), exons(1),
-                		 clipL(0), clipR(0), mapped_len(0) {
+                 int pos, bool reverse, GDynArray<uint32_t>& cigar,
+                 const char* qseq, const char* quals):iflags(0), exons(1),
+				 juncsdel(1),clipL(0), clipR(0), mapped_len(0) {
+   uint16_t flag=0;
    novel=true;
    b_hdr=NULL;
    b=bam_init1();
+   size_t l_qname=strlen(qname);
+   size_t l_seq=0;
+   if (qseq!=NULL) {
+	   l_seq=strlen(qseq);
+   }
+   //-- passed pos is 1-based
    if (pos<=0 || gseq_tid<0) {
-               b->core.pos=-1; //unmapped
-               b->core.flag |= BAM_FUNMAP;
-               gseq_tid=-1;
-               }
-          else b->core.pos=pos-1; //BAM is 0-based
-   b->core.tid=gseq_tid;
-   b->core.qual=255;
-   b->core.mtid=-1;
-   b->core.mpos=-1;
-   int l_qname=strlen(qname);
-   //from sam_parse1() in sam.c:
-   _parse_warn(l_qname <= 1, "empty query name");
-   _parse_err(l_qname > 255, "query name too long");
-   // resize large enough for name + extranul
-   if (possibly_expand_bam_data(b, l_qname + 4) < 0)
-      _parse_mem_err();
-   memcpy(b->data + b->l_data, qname, l_qname);
-   b->l_data += l_qname;
+	   flag |= BAM_FUNMAP;
+	   pos=-1;
+   }
+   pos--;
+   if (reverse) flag|=BAM_FREVERSE;
 
-   b->core.l_extranul = (4 - (b->l_data & 3)) & 3;
-   memcpy(b->data + b->l_data, "\0\0\0\0", b->core.l_extranul);
-   b->l_data += b->core.l_extranul;
-
-   b->core.l_qname = l_qname + b->core.l_extranul;
-
-   set_cigar(cigar); //this will also set core.bin
-   if (qseq!=NULL) add_sequence(qseq, strlen(qseq));
-   if (quals!=NULL) add_quals(quals); //quals must be given as Phred33
-   if (reverse) b->core.flag |= BAM_FREVERSE;
+   bam_set1(b, l_qname, qname, flag,
+		   gseq_tid, pos, 60, cigar.Count(), cigar(),
+		   -1, 0, 0, l_seq, qseq, quals, 0);
 }
-
+/*
 GSamRecord::GSamRecord(const char* qname, int32_t samflags, int32_t g_tid,
              int pos, int map_qual, const char* cigar, int32_t mg_tid, int mate_pos,
              int insert_size, const char* qseq, const char* quals,
@@ -362,16 +349,36 @@ switch (cop) {
 	GSeg exon;
 	bool intron=false;
 	bool ins=false;
+	uint del=0;
+	uint prevdel=0;
 	for (uint i = 0; i < c->n_cigar; ++i) {
 		unsigned char op = _cigOp(cigar[i]);
 		switch(op) {
 		  case BAM_CEQUAL:    // =
 		  case BAM_CDIFF:     // X
 		  case BAM_CMATCH:    // M
-		  case BAM_CDEL:      // D
 		    l+=_cigLen(cigar[i]);
+			if(intron) { // op comes after intron --> update juncdel
+				GSeg deljunc(prevdel,0);
+				juncsdel.Add(deljunc);
+			}
 		    intron=false;
 		    ins=false;
+		    del=0;
+		    break;
+		  case BAM_CDEL:
+			del=_cigLen(cigar[i]);
+			l+=del;
+			if (intron) { // deletion after intron --> update juncsdel
+				GSeg deljunc(prevdel,del);
+				juncsdel.Add(deljunc);
+			}
+			ins=false;
+			break;
+		  case BAM_CINS:      // I
+		    //rpos+=cl; //gpos not advanced
+		    //take care of cases where there is an ins within an intron
+		    ins=true;
 		    break;
 		  case BAM_CREF_SKIP: // N
 		    // exon ends here
@@ -384,22 +391,21 @@ switch (cop) {
 		    has_Introns=true;
 		    l += _cigLen(cigar[i]);
 		    exstart=c->pos+l;
+			prevdel=del;
 		    intron=true;
+		    del=0;
 		    break;
 		  case BAM_CSOFT_CLIP: // S
 		    soft_Clipped=true;
 		    if (l) clipR=_cigLen(cigar[i]);
 		      else clipL=_cigLen(cigar[i]);
 		    intron=false; ins=false;
+		    del=0;
 		    break;
 		  case BAM_CHARD_CLIP:
 		    hard_Clipped=true;
 		    intron=false; ins=false;
-		    break;
-		  case BAM_CINS:      // I
-		    //rpos+=cl; //gpos not advanced
-		    //take care of cases where there is an ins within an intron
-		    ins=true; 
+		    del=0;
 		    break;
 		  case BAM_CPAD:
 		    //gpos+=cl;
