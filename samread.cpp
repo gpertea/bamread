@@ -60,19 +60,21 @@ void showfasta(GSamRecord& rec, FILE* fout) {
 }
 
 int getAlnId(GSamRecord& rec) {
+	/*
 	if (rec.refId()!=last_refid) {
 		last_refid=rec.refId();
 		rnames.Clear();
 	}
 	if (rec.isPrimary())
-		return 1;
+	   return 1;
+	*/
     int* c=rnames.Find(rec.name());
     if (c) {
     	(*c)++;
     	return *c;
     }
-    rnames.Add(rec.name(), 2);
-    return 2;
+    rnames.Add(rec.name(), 1);
+    return 1;
 }
 
 void showgff(GSamRecord& rec, FILE* fout) {
