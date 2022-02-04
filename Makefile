@@ -1,7 +1,16 @@
 GDIR := ../gclib
 
 ## assumed htslib has been pulled from https://github.com/gpertea/htslib
-HTSLIB := ../htslib
+HTSLIB_SRC := ../htslib
+HTSLIB := $(abspath $(HTSLIB_SRC))
+
+ifeq ($(wildcard $(HTSLIB)),)
+  $(info Clone https://github.com/gpertea/htslib in the parent directory)
+  $(error $(HTSLIB_SRC) source missing)
+#else
+#  $(info $(HTSLIB_SRC) found!)
+endif
+
 #my branch of htslib includes libdeflate:
 LIBDEFLATE := ${HTSLIB}/xlibs/lib/libdeflate.a
 LIBLZMA := ${HTSLIB}/xlibs/lib/liblzma.a
@@ -17,11 +26,12 @@ else
     MARCH = 
 endif    
 
-CC      := g++
+
+
+CXX   := $(if $(CXX),$(CXX),g++)
 
 BASEFLAGS  := -Wall -Wextra ${INCDIRS} $(MARCH) \
  -D_REENTRANT -std=c++11 -fno-strict-aliasing -fno-exceptions -fno-rtti
-
 
 ifneq (,$(filter %release %static %static-cpp, $(MAKECMDGOALS)))
   #release build
@@ -44,17 +54,17 @@ ifneq ($(findstring static,$(MAKECMDGOALS)),)
 endif
 
 %.o : %.cpp
-	${CC} ${CFLAGS} -c $< -o $@
+	${CXX} ${CFLAGS} -c $< -o $@
 
 # C/C++ linker
+LINKER  := $(if $(LINKER),$(LINKER),g++)
 
-LINKER  := g++
 LIBS := ${HTSLIB}/libhts.a ${LIBLZMA} ${LIBDEFLATE} ${LIBBZ2} -lz -lm -lpthread
 OBJS := ${GDIR}/GBase.o ${GDIR}/GArgs.o ${GDIR}/GStr.o \
         GSam.o
 
 # Compiling for Windows with MinGW/MSYS2?
-ifneq ($(findstring -mingw,$(shell $(CC) -dumpmachine 2>/dev/null)),)
+ifneq ($(findstring -mingw,$(shell $(CXX) -dumpmachine 2>/dev/null)),)
  LIBS += -lregex -lws2_32
 endif
 
