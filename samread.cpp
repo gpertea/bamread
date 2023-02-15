@@ -182,8 +182,8 @@ int main(int argc, char *argv[])  {
 	bool writerCreated=false;
 	args.startNonOpt(); //start parsing again the non-option arguments
     while ((fname=args.nextNonOpt())) {
-		GSamReader samreader(fname, SAM_QNAME|SAM_FLAG|SAM_RNAME|SAM_POS|SAM_CIGAR|SAM_AUX,
-				cram_ref);
+		GSamReader samreader(fname, cram_ref,
+				SAM_QNAME|SAM_FLAG|SAM_RNAME|SAM_POS|SAM_CIGAR|SAM_AUX);
 		if (out_type==outSAM && !writerCreated) {
 		   GSamFileType st=outBAM ? GSamFile_BAM : GSamFile_SAM;
 		   samwriter=new GSamWriter(outfname, samreader.header(), st);
