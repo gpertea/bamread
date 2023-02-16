@@ -4,11 +4,10 @@
 #include "GHashMap.hh"
 
 const char* USAGE="Usage:\n samread [--sam|--S|--bam|-B|--fasta|-F|--fastq|-Q|--gff|-G] \n\
-   [--ref|-r <ref.fa>] [-A|--all] [--table|-T] [-Y] [--nstrand] \n\
+   [--ref|-r <ref.fa>] [-A|--all] [--table|-T] [-Y] [--human-rat] [--nstrand] \n\
    [-o <outfile>] <in.bam>|<in.sam> ..\n";
 /*
-		"
- Recognized fields for the --table output option:\n\
+ TODO: Recognized fields for the --table output option:\n\
   SAM columns: @qname, @flag, @rname, @pos, @mapg, @cigar, @rnext, @pnext,\n\
                @tlen ,@seq, @qual, @aux\n\
   SAM tag names: use the 2-letter string of the tag name directly; its value\n\
@@ -94,9 +93,17 @@ void showTable(GSamRecord& rec, FILE* fout) {
 	static const char* dot=".";
 	if (rec.isUnmapped()) return;
 	char tstrand=rec.spliceStrand();
+	char alnstrand=rec.alnStrand();
+	int isPrimary=rec.isPrimary() ? 1 : 0;
 	const char* md=rec.tag_str("MD");
 	if (md==NULL) md=dot;
-	// readName, refName, start, tstrand, cigar, exons, MD
+	int as=rec.tag_int("AS",);
+	if (as==NULL) as=dot;
+	int nh=rec.tag_int("NH", -1);
+	//if (nh==NULL) nh=dot;
+	int nm=rec.tag_int("NM", -1);
+	//if (nm==NULL) nm=dot;
+	// qname, refname, start, alnstrand, tstrand, isPrimary, cigar, exons, MD, AS, NH, NM, YT
 	GStr exons;
 	for (int i=0;i<rec.exons.Count();i++) {
 		exons+=rec.exons[i].start;exons+='-';
