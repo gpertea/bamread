@@ -35,7 +35,7 @@ GSamWriter* samwriter=NULL;
 
 GHash<int> rnames;
 int last_refid=-1;
-
+bool headerPrinted=false;
 
 void showfastq(GSamRecord& rec, FILE* fout) {
   if (rec.isUnmapped() && !all_reads) return;
@@ -97,13 +97,18 @@ void showTable(GSamRecord& rec, FILE* fout) {
 	int isPrimary=rec.isPrimary() ? 1 : 0;
 	const char* md=rec.tag_str("MD");
 	if (md==NULL) md=dot;
-	int as=rec.tag_int("AS",);
-	if (as==NULL) as=dot;
+	int as=rec.tag_int("AS",0);
 	int nh=rec.tag_int("NH", -1);
 	//if (nh==NULL) nh=dot;
 	int nm=rec.tag_int("NM", -1);
-	//if (nm==NULL) nm=dot;
-	// qname, refname, start, alnstrand, tstrand, isPrimary, cigar, exons, MD, AS, NH, NM, YT
+	const char* yt=rec.tag_str("YT"); //pairing: UU=not in a pair, CP=concordantly aligned pair, DP=discordantly aligned pair, UP=pair unaligned
+	if (yt==NULL) yt=dot;
+	if (!headerPrinted) {
+	  fprintf(fout, "qname\trefname\tstart\talnstrand\ttstrand\tprim\tcigar\texons\tMD\tAS\tNH\tNM\tYT");
+	  if (addYC) fprintf(fout,"\tYC");
+	  headerPrinted=true;
+	}
+	fprintf(fout, "\n");
 	GStr exons;
 	for (int i=0;i<rec.exons.Count();i++) {
 		exons+=rec.exons[i].start;exons+='-';
@@ -111,8 +116,8 @@ void showTable(GSamRecord& rec, FILE* fout) {
 		if (i+1<rec.exons.Count()) exons+=',';
 	}
 	if (nstrand && rec.exons.Count()==1) tstrand='.';
-	fprintf(fout, "%s\t%s\t%d\t%c\t%s\t%s\t%s",rec.name(), rec.refName(),
-			rec.start, tstrand, rec.cigar(), exons.chars(), md);
+	fprintf(fout, "%s\t%s\t%d\t%c\t%c\t%d\t%s\t%s\t%s\t%d\t%d\t%d\t%s", rec.name(), rec.refName(),
+			rec.start, alnstrand, tstrand, isPrimary, rec.cigar(), exons.chars(), md, as, nh, nm, yt);
 	if (addYC) {
 		int v=rec.tag_int("YC");
 		if (v==0) v=1;
@@ -188,6 +193,7 @@ int main(int argc, char *argv[])  {
 
 	bool writerCreated=false;
 	args.startNonOpt(); //start parsing again the non-option arguments
+	headerPrinted=false;
     while ((fname=args.nextNonOpt())) {
 		GSamReader samreader(fname, cram_ref,
 				SAM_QNAME|SAM_FLAG|SAM_RNAME|SAM_POS|SAM_CIGAR|SAM_AUX);
