@@ -373,14 +373,16 @@ switch (cop) {
    return qv;
  }
 
- char* GSamRecord::cigar() { //returns text version of the CIGAR string; must be freed by user
-   kstring_t str = KS_INITIALIZE;
-   if (b->core.n_cigar == 0) kputc('*', &str);
+ char* GSamRecord::cigar() { //returns text version of the CIGAR string
+   //must be copied by user if needed, otherwise destroyed with this
+   //kstring_t str = KS_INITIALIZE;
+   ks_clear(&_cigar);
+   if (b->core.n_cigar == 0) kputc('*', &_cigar);
     else {
       for (uint i = 0; i < b->core.n_cigar; ++i) {
-         kputw(bam_get_cigar(b)[i]>>BAM_CIGAR_SHIFT, &str);
-         kputc(BAM_CIGAR_STR[bam_get_cigar(b)[i]&BAM_CIGAR_MASK], &str);
+         kputw(bam_get_cigar(b)[i]>>BAM_CIGAR_SHIFT, &_cigar);
+         kputc(BAM_CIGAR_STR[bam_get_cigar(b)[i]&BAM_CIGAR_MASK], &_cigar);
          }
       }
-   return str.s;
+   return _cigar.s;
  }

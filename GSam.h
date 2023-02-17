@@ -40,6 +40,7 @@ class GSamRecord: public GSeg {
       };
    };
    sam_hdr_t* b_hdr=NULL;
+   kstring_t _cigar=KS_INITIALIZE; //for quick cigar handling
  public:
    GVec<GSeg> exons; //coordinates will be 1-based
    GVec<GSeg> juncsdel; // delete coordinates around introns
@@ -47,9 +48,7 @@ class GSamRecord: public GSeg {
    int clipR=0;
    int mapped_len=0; //sum of exon lengths
    int uval=0; //user value (e.g. file index)
-   //FIXME: DEBUG only fields
 #ifdef _DEBUG
-   char* _cigar=NULL;
    const char* _read=NULL;
 #endif
    // -- DEBUG only fields
@@ -65,7 +64,7 @@ class GSamRecord: public GSeg {
       novel=takeOver;
       // true if it should take over (adopt) from_b, will free it on destroy
 #ifdef _DEBUG
-      _cigar=cigar();
+      //_cigar=cigar();
       _read=name();
 #endif
       setupCoordinates();//set 1-based coordinates (start, end and exons array)
@@ -80,7 +79,7 @@ class GSamRecord: public GSeg {
 	   novel=adopt_b;
 	   b=from_b;
 #ifdef _DEBUG
-       _cigar=cigar();
+       //_cigar=cigar();
        _read=name();
 #endif
 	   b_hdr=b_header;
@@ -95,7 +94,7 @@ class GSamRecord: public GSeg {
 	      b=bam_dup1(r.b);
 	      novel=true; //will also free b when destroyed
 #ifdef _DEBUG
-	      _cigar=Gstrdup(r._cigar);
+	      //_cigar=Gstrdup(r._cigar);
 	      _read=r._read;
 #endif
    }
@@ -115,7 +114,7 @@ class GSamRecord: public GSeg {
       clipR = r.clipR;
       mapped_len=r.mapped_len;
 #ifdef _DEBUG
-      _cigar=Gstrdup(r._cigar);
+      //_cigar=Gstrdup(r._cigar);
       _read=r._read;
 #endif
       return *this;
@@ -128,6 +127,7 @@ class GSamRecord: public GSeg {
            bam_destroy1(b);
            //novel=false;
         }
+        ks_clear(&_cigar);
         b=NULL;
         exons.Clear();
         juncsdel.Clear();
@@ -135,14 +135,16 @@ class GSamRecord: public GSeg {
         b_hdr=NULL;
         iflags=0;
 #ifdef _DEBUG
-        GFREE(_cigar);
+        //GFREE(_cigar);
         _read=NULL;
 #endif
     }
 
     ~GSamRecord() {
        clear();
+       GFREE(_cigar.s);
     }
+
 #ifdef _DEBUG
     void print_cigar(bam1_t *al){
         for (uint8_t c=0;c<al->core.n_cigar;++c){
@@ -352,7 +354,8 @@ class GSamRecord: public GSeg {
  char spliceStrand(); // '+', '-' from the XS tag, or '.' if no XS tag
  char* sequence(); //user should free after use
  char* qualities();//user should free after use
- char* cigar(); //returns text version of the CIGAR string; user must deallocate
+ char* cigar(); //returns text version of the CIGAR string; deallocated with record
+                //user must copy the result if persistence needed
 };
 
 // from sam.c:

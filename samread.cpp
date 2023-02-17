@@ -116,8 +116,12 @@ void showTable(GSamRecord& rec, FILE* fout) {
 		if (i+1<rec.exons.Count()) exons+=',';
 	}
 	if (nstrand && rec.exons.Count()==1) tstrand='.';
-	fprintf(fout, "%s\t%s\t%d\t%c\t%c\t%d\t%s\t%s\t%s\t%d\t%d\t%d\t%s", rec.name(), rec.refName(),
-			rec.start, alnstrand, tstrand, isPrimary, rec.cigar(), exons.chars(), md, as, nh, nm, yt);
+	int mate=rec.pairOrder();
+	if (mate>0) fprintf(fout, "%s/%d", rec.name(), mate);
+	       else fprintf(fout, "%s", rec.name());
+	const char* cigar=rec.cigar();
+	fprintf(fout, "\t%s\t%d\t%c\t%c\t%d\t%s\t%s\t%s\t%d\t%d\t%d\t%s", rec.refName(),
+			rec.start, alnstrand, tstrand, isPrimary, cigar, exons.chars(), md, as, nh, nm, yt);
 	if (addYC) {
 		int v=rec.tag_int("YC");
 		if (v==0) v=1;
