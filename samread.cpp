@@ -153,6 +153,7 @@ struct TPairData {
 	bool hasSec[2]={false, false};
 	int maxNH[2]={0,0};
 	int maxNHPair=0;
+	bool pair_aligned=false;
 	int maxHscore[2]={INT_MIN, INT_MIN};
 	int maxRscore[2]={INT_MIN, INT_MIN};
 	bool newrec[2]={true,true};
@@ -204,8 +205,10 @@ void statsHumanRat(GSamReader& samreader, FILE* fout) {
 		 else if (rdata.maxNH[0]>1)  stats.multiMapped[0]++;
 		 if (rdata.maxNH[1]==1) stats.uniqAligned[1]++;
 		 else if (rdata.maxNH[1]>1)  stats.multiMapped[1]++;
-		 if (rdata.maxNHPair==1) stats.uniqAlignedPairs++;
-		 else if (rdata.maxNHPair>1) stats.multiMappedPairs++;
+		 if (rdata.pair_aligned) {
+		     if (rdata.maxNHPair==1) stats.uniqAlignedPairs++;
+		       else if (rdata.maxNHPair>1) stats.multiMappedPairs++;
+		 }
 		 if (rdata.maxNHPair>stats.maxNH) stats.maxNH=rdata.maxNHPair;
 		 if (rdata.maxNHPair>5) stats.mmover5++;
 		 if (rdata.maxNHPair>10) stats.mmover10++;
@@ -250,6 +253,7 @@ void statsHumanRat(GSamReader& samreader, FILE* fout) {
      stats.totalAlignments++;
      if (rdata.numaln[0]==1 && rdata.numaln[1]==1) {
     	//both mates have an alignment
+    	rdata.pair_aligned=true;
 	    stats.numAlignedPairs++;
         if (strcmp(yt, "CP")==0) stats.concPairs++;
         else if (strcmp(yt, "DP")==0) stats.discPairs++;
