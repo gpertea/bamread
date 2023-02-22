@@ -159,6 +159,56 @@ struct TPairData {
 	bool newrec[2]={true,true};
 };
 
+
+void flushPairData(TPairData& rdata, TAlnStats& stats) {
+	 int both[2]={0,0}; // 0 =  Human xor Rat, 1 = both Human & Rat, same score
+	                    // 2 = human > rat, -1 = rat > human
+	 for (int m=0;m<2;m++) {
+	    if (!rdata.hasHuman[m]) stats.ratOnly[m]++;
+	    if (!rdata.hasRat[m]) stats.humanOnly[m]++;
+	    if (rdata.hasHuman[m] && rdata.hasRat[m]) {
+	    	both[m]=1;
+	    	if (rdata.maxHscore[m]==rdata.maxRscore[m]) {
+	    		stats.HumanRat[m]++;
+	    	}
+	    	else { // scores are not equal
+	    		if (rdata.maxHscore[m]>rdata.maxRscore[m]) {
+	    		  both[m]=2;
+	    		  stats.betterHuman[m]++;
+	    	    } else { //rat score is higher
+	    	      both[m]=3;
+	    		  stats.betterRat[m]++;
+	    	    }
+	    	}
+	    }
+	 }
+	 if (both[0]==both[1]) {
+		if (both[0]==0) {
+		 				if (rdata.hasHuman[0]) stats.humanOnlyPairs++;
+		 				                  else stats.ratOnlyPairs++;
+		} else if (both[0]==1) {
+			stats.HumanRatPairs++;
+		} else if (both[0]==2) stats.betterHumanPairs++;
+		                  else stats.betterRatPairs++; //both = -1
+
+	 }
+	 rdata.maxNHPair=GMAX(rdata.maxNH[0], rdata.maxNH[1]);
+	 if (rdata.maxNH[0]==1) stats.uniqAligned[0]++;
+	 else if (rdata.maxNH[0]>1)  stats.multiMapped[0]++;
+	 if (rdata.maxNH[1]==1) stats.uniqAligned[1]++;
+	 else if (rdata.maxNH[1]>1)  stats.multiMapped[1]++;
+	 if (rdata.pair_aligned) {
+	     if (rdata.maxNHPair==1) stats.uniqAlignedPairs++;
+	       else if (rdata.maxNHPair>1) stats.multiMappedPairs++;
+	 }
+	 if (rdata.maxNHPair>stats.maxNH) stats.maxNH=rdata.maxNHPair;
+	 if (rdata.maxNHPair>5) stats.mmover5++;
+	 if (rdata.maxNHPair>10) stats.mmover10++;
+	 if (rdata.maxNHPair>20) stats.mmover20++;
+	 if (rdata.maxNHPair>40) stats.mmover40++;
+	 rdata={};
+}
+
 void statsHumanRat(GSamReader& samreader, FILE* fout) {
   GSamRecord rec;
   TAlnStats stats;
@@ -169,55 +219,9 @@ void statsHumanRat(GSamReader& samreader, FILE* fout) {
 	 const char* qname=rec.name();
 	 if (strcmp(qname, ks_c_str(&last_qname))!=0) {
 		 //--flush rdata into stats
-		 int both[2]={0,0}; // 0 =  Human xor Rat, 1 = both Human & Rat, same score
-		                    // 2 = human > rat, -1 = rat > human
-		 for (int m=0;m<2;m++) {
-		    if (!rdata.hasHuman[m]) stats.ratOnly[m]++;
-		    if (!rdata.hasRat[m]) stats.humanOnly[m]++;
-		    if (rdata.hasHuman[m] && rdata.hasRat[m]) {
-		    	both[m]=1;
-		    	if (rdata.maxHscore[m]==rdata.maxRscore[m]) {
-		    		stats.HumanRat[m]++;
-		    	}
-		    	else { // scores are not equal
-		    		if (rdata.maxHscore[m]>rdata.maxRscore[m]) {
-		    		  both[m]=2;
-		    		  stats.betterHuman[m]++;
-		    	    } else { //rat score is higher
-		    	      both[m]=3;
-		    		  stats.betterRat[m]++;
-		    	    }
-		    	}
-		    }
-		 }
-		 if (both[0]==both[1]) {
-			if (both[0]==0) {
-			 				if (rdata.hasHuman[0]) stats.humanOnlyPairs++;
-			 				                  else stats.ratOnlyPairs++;
-			} else if (both[0]==1) {
-				stats.HumanRatPairs++;
-			} else if (both[0]==2) stats.betterHumanPairs++;
-			                  else stats.betterRatPairs++; //both = -1
-
-		 }
-		 rdata.maxNHPair=GMAX(rdata.maxNH[0], rdata.maxNH[1]);
-		 if (rdata.maxNH[0]==1) stats.uniqAligned[0]++;
-		 else if (rdata.maxNH[0]>1)  stats.multiMapped[0]++;
-		 if (rdata.maxNH[1]==1) stats.uniqAligned[1]++;
-		 else if (rdata.maxNH[1]>1)  stats.multiMapped[1]++;
-		 if (rdata.pair_aligned) {
-		     if (rdata.maxNHPair==1) stats.uniqAlignedPairs++;
-		       else if (rdata.maxNHPair>1) stats.multiMappedPairs++;
-		 }
-		 if (rdata.maxNHPair>stats.maxNH) stats.maxNH=rdata.maxNHPair;
-		 if (rdata.maxNHPair>5) stats.mmover5++;
-		 if (rdata.maxNHPair>10) stats.mmover10++;
-		 if (rdata.maxNHPair>20) stats.mmover20++;
-		 if (rdata.maxNHPair>40) stats.mmover40++;
-
+		 flushPairData(rdata, stats);
 		 ks_clear(&last_qname);
 		 kputs(qname, &last_qname);
-		 rdata={};
 	 }
 	 int mate=rec.pairOrder();
 	 if (mate>0) mate--;
