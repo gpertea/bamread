@@ -24,7 +24,8 @@ enum OutType {
   outFASTA,
   outGFF,
   outTable,
-  outSAM
+  outSAM,
+  outHumanRat // don't ask..
 };
 
 OutType out_type=outFASTQ;
@@ -36,6 +37,62 @@ GSamWriter* samwriter=NULL;
 GHash<int> rnames;
 int last_refid=-1;
 bool headerPrinted=false;
+
+//aln stats per file:
+struct TAlnStats { // [2] : per mate in paired reads
+   int totalReads=0; //total reads seen
+   int totalAlignments=0; //total alignments found
+   int numAligned[2]={0}; //how many reads were aligned at least once
+   int numAlignedPairs=0; //how many aligned pairs (no matter how)
+   int unpaired=0; //how many unpaired reads were found
+   //^6
+   int unaligned[2]={0};
+   int uniqAligned[2]={0}; //how many reads aligned exactly once
+   int uniqAlignedPairs=0;
+   int multiMapped[2]={0}; //how many reads have at least 2 mappings (NH>1)
+   int multiMappedPairs=0; //how many pairs have at least 2 mappings (NH>1)
+   //^8
+   int haveSecAln[2]={0}; //how many reads have seconday alignments
+   int mmover5=0; //how many pairs have NH>5
+   int mmover10=0; //how many pairs have NH>10
+   int mmover20=0; //how many pairs have NH>20
+   int mmover40=0; //how many pairs have NH>40
+   int maxNH=0;
+   //^7
+   int concPairs=0; //concordantly aligned pairs
+   int discPairs=0; //discordantly aligned pairs
+   // -- for human-rat stats:
+   int humanOnly[2]={0}; //how many reads have no mappings reported on rat at all
+   int ratOnly[2]={0}; //how many reads have no mappings reported on human at all
+   int humanOnlyPairs=0; //same as above, but for the whole pair
+   int ratOnlyPairs=0;
+   //^8
+   int HumanRat[2]={0}; //how many reads have primary human and rat alignments with same score
+   int HumanRatPairs=0; //how many pairs have primary human and rat alignments with same score
+   int betterHuman[2]={0}; //how many reads map to both human and rat, but higher score in human
+   int betterRat[2]={0}; //how many reads map to both rat and human, but higher score in rat
+   int betterHumanPairs=0; //same as above but as pairs
+   int betterRatPairs=0;
+   //^9
+   static void header(FILE* fout) {
+	fprintf(fout,"file\ttotalReads\ttotalAlignments\tnumAligned_1\tnumAligned_2\tunpaired\tpairsAligned\t"
+"unaligned_1\tunaligned_2\tuniqAligned_1\tuniqAligned_2\tuniqAlignedPairs\t"
+"multiMapped_1\tmultiMapped_2\tmultiMappedPairs\thaveSecAln_1\thaveSecAln_2\t"
+"mm_over5\tmm_over10\tmm_over20\tmm_over40\tmaxNH\tconcordantPairs\tdiscordantPairs\t"
+"humanOnly_1\thumanOnly_2\thumanOnlyPairs\tratOnly_1\tratOnly_2\tratOnlyPairs\tHumanRat_1\tHumanRat_2\tHumanRatPairs\t"
+"betterHuman_1\tbetterHuman_2\tbetterHumanPairs\tbetterRat_1\tbetterRat_2\tbetterRatPairs\n");
+   }
+   void report(FILE* fout, const char* fname) {
+	fprintf(fout,"%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t" //1+14
+  "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", //24
+	fname, totalReads, totalAlignments, numAligned[0], numAligned[1], unpaired, numAlignedPairs, unaligned[0], unaligned[1],
+	uniqAligned[0], uniqAligned[1], uniqAlignedPairs, multiMapped[0], multiMapped[1], multiMappedPairs,
+	haveSecAln[0], haveSecAln[1], mmover5, mmover10, mmover20, mmover40, maxNH, concPairs, discPairs,
+	humanOnly[0],humanOnly[1], humanOnlyPairs, ratOnly[0], ratOnly[1], ratOnlyPairs,
+	HumanRat[0], HumanRat[1], HumanRatPairs, betterHuman[0], betterHuman[1], betterHumanPairs,
+	betterRat[0], betterRat[1], betterRatPairs );
+   }
+};
 
 void showfastq(GSamRecord& rec, FILE* fout) {
   if (rec.isUnmapped() && !all_reads) return;
@@ -89,6 +146,125 @@ void showgff(GSamRecord& rec, FILE* fout) {
      }
 }
 
+struct TPairData {
+	bool hasHuman[2]={false,false};
+	int numaln[2]={0,0};
+	bool hasRat[2]={false, false};
+	bool hasSec[2]={false, false};
+	int maxNH[2]={0,0};
+	int maxNHPair=0;
+	int maxHscore[2]={INT_MIN, INT_MIN};
+	int maxRscore[2]={INT_MIN, INT_MIN};
+	bool newrec[2]={true,true};
+};
+
+void statsHumanRat(GSamReader& samreader, FILE* fout) {
+  GSamRecord rec;
+  TAlnStats stats;
+  kstring_t last_qname=KS_INITIALIZE;
+  ks_resize(&last_qname, 80);
+  TPairData rdata={};
+  while (samreader.next(rec)) {
+	 const char* qname=rec.name();
+	 if (strcmp(qname, ks_c_str(&last_qname))!=0) {
+		 //--flush rdata into stats
+		 int both[2]={0,0}; // 0 =  Human xor Rat, 1 = both Human & Rat, same score
+		                    // 2 = human > rat, -1 = rat > human
+		 for (int m=0;m<2;m++) {
+		    if (!rdata.hasHuman[m]) stats.ratOnly[m]++;
+		    if (!rdata.hasRat[m]) stats.humanOnly[m]++;
+		    if (rdata.hasHuman[m] && rdata.hasRat[m]) {
+		    	both[m]=1;
+		    	if (rdata.maxHscore[m]==rdata.maxRscore[m]) {
+		    		stats.HumanRat[m]++;
+		    	}
+		    	else { // scores are not equal
+		    		if (rdata.maxHscore[m]>rdata.maxRscore[m]) {
+		    		  both[m]=2;
+		    		  stats.betterHuman[m]++;
+		    	    } else { //rat score is higher
+		    	      both[m]=3;
+		    		  stats.betterRat[m]++;
+		    	    }
+		    	}
+		    }
+		 }
+		 if (both[0]==both[1]) {
+			if (both[0]==0) {
+			 				if (rdata.hasHuman[0]) stats.humanOnlyPairs++;
+			 				                  else stats.ratOnlyPairs++;
+			} else if (both[0]==1) {
+				stats.HumanRatPairs++;
+			} else if (both[0]==2) stats.betterHumanPairs++;
+			                  else stats.betterRatPairs++; //both = -1
+
+		 }
+		 rdata.maxNHPair=GMAX(rdata.maxNH[0], rdata.maxNH[1]);
+		 if (rdata.maxNH[0]==1) stats.uniqAligned[0]++;
+		 else if (rdata.maxNH[0]>1)  stats.multiMapped[0]++;
+		 if (rdata.maxNH[1]==1) stats.uniqAligned[1]++;
+		 else if (rdata.maxNH[1]>1)  stats.multiMapped[1]++;
+		 if (rdata.maxNHPair==1) stats.uniqAlignedPairs++;
+		 else if (rdata.maxNHPair>1) stats.multiMappedPairs++;
+		 if (rdata.maxNHPair>stats.maxNH) stats.maxNH=rdata.maxNHPair;
+		 if (rdata.maxNHPair>5) stats.mmover5++;
+		 if (rdata.maxNHPair>10) stats.mmover10++;
+		 if (rdata.maxNHPair>20) stats.mmover20++;
+		 if (rdata.maxNHPair>40) stats.mmover40++;
+
+		 ks_clear(&last_qname);
+		 kputs(qname, &last_qname);
+		 rdata={};
+	 }
+	 int mate=rec.pairOrder();
+	 if (mate>0) mate--;
+	 else {
+		 if (rdata.newrec[0]) {
+		   stats.unpaired++;
+		 }
+	 }
+     if (rec.isUnmapped()) {
+		 stats.totalReads++;
+    	 stats.unaligned[mate]++;
+    	 continue;
+     }
+     int nh=rec.tag_int("NH", 1);
+     if (nh>rdata.maxNH[mate]) rdata.maxNH[mate]=nh;
+     int score=rec.tag_int("AS", 100);
+     if (!rec.isPrimary()) rdata.hasSec[mate]=true;
+     const char* yt=rec.tag_str("YT");
+     //pairing: UU=not in a pair, CP=concordantly aligned pair, DP=discordantly aligned pair, UP=pair unaligned
+     if (yt==NULL) yt=".";
+
+     const char* refname=rec.refName();
+     if (startsWith(refname, "rat_")) {
+    	 rdata.hasRat[mate]=true;
+    	 if (rdata.maxRscore[mate]<score)
+    		 rdata.maxRscore[mate]=score;
+     } else { //human mapping
+    	 rdata.hasHuman[mate]=true;
+    	 if (rdata.maxHscore[mate]<score)
+    		 rdata.maxHscore[mate]=score;
+     }
+     rdata.numaln[mate]++;
+     stats.totalAlignments++;
+     if (rdata.numaln[0]==1 && rdata.numaln[1]==1) {
+    	//both mates have an alignment
+	    stats.numAlignedPairs++;
+        if (strcmp(yt, "CP")==0) stats.concPairs++;
+        else if (strcmp(yt, "DP")==0) stats.discPairs++;
+     }
+	 if (rdata.newrec[mate]) {
+		 stats.totalReads++;
+		 stats.numAligned[mate]++;
+		 rdata.newrec[mate]=false;
+	 }
+
+  }
+  ks_free(&last_qname);
+  stats.report(fout, samreader.fileName());
+}
+
 void showTable(GSamRecord& rec, FILE* fout) {
 	static const char* dot=".";
 	if (rec.isUnmapped()) return;
@@ -136,7 +312,7 @@ void showSAM(GSamRecord& rec) {
 }
 
 int main(int argc, char *argv[])  {
-    GArgs args(argc, argv, "fasta;fastq;sam;nstrand;bam;gff;all;table;help;ref="
+    GArgs args(argc, argv, "fasta;fastq;sam;nstrand;bam;gff;all;table;human-rat;help;ref="
         "hBAFTSGYaqo:r:");
     args.printError(USAGE, true);
     bool outBAM=false;
@@ -165,7 +341,10 @@ int main(int argc, char *argv[])  {
         out_type=outSAM;
         if (args.getOpt('B') || args.getOpt("bam"))
         	outBAM=true;
+    } else if (args.getOpt("human-rat")) {
+    	out_type=outHumanRat;
     }
+
     char* cram_ref=NULL;
     cram_ref=args.getOpt('r');
     if (cram_ref==NULL) cram_ref=args.getOpt("ref");
@@ -198,6 +377,8 @@ int main(int argc, char *argv[])  {
 	bool writerCreated=false;
 	args.startNonOpt(); //start parsing again the non-option arguments
 	headerPrinted=false;
+	if (out_type==outHumanRat)
+	    TAlnStats::header(fout);
     while ((fname=args.nextNonOpt())) {
 		GSamReader samreader(fname, cram_ref,
 				SAM_QNAME|SAM_FLAG|SAM_RNAME|SAM_POS|SAM_CIGAR|SAM_AUX);
@@ -227,6 +408,9 @@ int main(int argc, char *argv[])  {
 			while (samreader.next(aln)) {
 			   showSAM(aln);
 			}
+		}
+		else if (out_type==outHumanRat) {
+			statsHumanRat(samreader, fout);
 		}
 		else { //default: FASTQ output
 			while (samreader.next(aln)) {
