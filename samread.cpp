@@ -269,6 +269,7 @@ void statsHumanRat(GSamReader& samreader, FILE* fout) {
 	 }
 
   }
+  flushPairData(rdata, stats);
   ks_free(&last_qname);
   stats.report(fout, samreader.fileName());
 }
