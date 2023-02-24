@@ -61,12 +61,19 @@ struct TAlnStats { // [2] : per mate in paired reads
    //^7
    int concPairs=0; //concordantly aligned pairs
    int discPairs=0; //discordantly aligned pairs
-   // -- for human-rat stats:
+   int discPairsHuman=0; //discordant pairs, both reads on human genome
+   int discPairsRat=0; //discordant pairs, both reads on rat genome
+   int discPairsHumanRat=0; //discordant pairs, split between genomes
+       // -- human-rat stats:
    int humanOnly[2]={0}; //how many reads have no mappings reported on rat at all
+   int humanOnlyMM[2]={0}; //of these, how many are multi-mappings within the human genome
    int ratOnly[2]={0}; //how many reads have no mappings reported on human at all
+   int ratOnlyMM[2]={0}; //of these, how many are multi-mappings within the rat genome
    int humanOnlyPairs=0; //same as above, but for the whole pair
+   int humanOnlyPairsMM=0; // multimapped human-only pairs
    int ratOnlyPairs=0;
-   //^8
+   int ratOnlyPairsMM=0; // multimapped rat-only pairs
+   //^17
    int HumanRat[2]={0}; //how many reads have primary human and rat alignments with same score
    int HumanRatPairs=0; //how many pairs have primary human and rat alignments with same score
    int betterHuman[2]={0}; //how many reads map to both human and rat, but higher score in human
@@ -78,17 +85,19 @@ struct TAlnStats { // [2] : per mate in paired reads
 	fprintf(fout,"file\ttotalReads\ttotalAlignments\tnumAligned_1\tnumAligned_2\tunpaired\tpairsAligned\t"
 "unaligned_1\tunaligned_2\tuniqAligned_1\tuniqAligned_2\tuniqAlignedPairs\t"
 "multiMapped_1\tmultiMapped_2\tmultiMappedPairs\thaveSecAln_1\thaveSecAln_2\t"
-"mm_over5\tmm_over10\tmm_over20\tmm_over40\tmaxNH\tconcordantPairs\tdiscordantPairs\t"
-"humanOnly_1\thumanOnly_2\thumanOnlyPairs\tratOnly_1\tratOnly_2\tratOnlyPairs\tHumanRat_1\tHumanRat_2\tHumanRatPairs\t"
+"mm_over5\tmm_over10\tmm_over20\tmm_over40\tmaxNH\tconcordantPairs\tdiscordantPairs\tdiscPairsHuman\tdiscPairsRat\t"
+"discPairsHumanRat\thumanOnly_1\thumanOnlyMM_1\thumanOnly_2\thumanOnlyMM_2\thumanOnlyPairs\thumanOnlyPairsMM\t"
+"ratOnly_1\tratOnlyMM_1\tratOnly_2\tratOnlyMM_2\tratOnlyPairs\tratOnlyPairsMM\tHumanRat_1\tHumanRat_2\tHumanRatPairs\t"
 "betterHuman_1\tbetterHuman_2\tbetterHumanPairs\tbetterRat_1\tbetterRat_2\tbetterRatPairs\n");
    }
    void report(FILE* fout, const char* fname) {
-	fprintf(fout,"%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t" //1+14
-  "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", //24
+	fprintf(fout,"%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t" //1+14+7
+  "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", //26
 	fname, totalReads, totalAlignments, numAligned[0], numAligned[1], unpaired, numAlignedPairs, unaligned[0], unaligned[1],
 	uniqAligned[0], uniqAligned[1], uniqAlignedPairs, multiMapped[0], multiMapped[1], multiMappedPairs,
 	haveSecAln[0], haveSecAln[1], mmover5, mmover10, mmover20, mmover40, maxNH, concPairs, discPairs,
-	humanOnly[0],humanOnly[1], humanOnlyPairs, ratOnly[0], ratOnly[1], ratOnlyPairs,
+	discPairsHuman, discPairsRat, discPairsHumanRat, humanOnly[0],humanOnlyMM[0], humanOnly[1], humanOnlyMM[1],
+	humanOnlyPairs,humanOnlyPairsMM, ratOnly[0], ratOnlyMM[0], ratOnly[1], ratOnlyMM[1], ratOnlyPairs, ratOnlyPairsMM,
 	HumanRat[0], HumanRat[1], HumanRatPairs, betterHuman[0], betterHuman[1], betterHumanPairs,
 	betterRat[0], betterRat[1], betterRatPairs );
    }
@@ -148,7 +157,7 @@ void showgff(GSamRecord& rec, FILE* fout) {
 
 struct TPairData {
 	bool hasHuman[2]={false,false};
-	int numaln[2]={0,0};
+	int numaln[2]={0,0}; //NH for each mate
 	bool hasRat[2]={false, false};
 	bool hasSec[2]={false, false};
 	int maxNH[2]={0,0};
@@ -157,6 +166,7 @@ struct TPairData {
 	int maxHscore[2]={INT_MIN, INT_MIN};
 	int maxRscore[2]={INT_MIN, INT_MIN};
 	bool newrec[2]={true,true};
+	bool discordant=true;
 };
 
 
