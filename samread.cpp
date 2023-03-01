@@ -97,7 +97,7 @@ struct TAlnStats { // [2] : per mate in paired reads
 	uniqAligned[0], uniqAligned[1], uniqAlignedPairs, multiMapped[0], multiMapped[1], multiMappedPairs,
 	haveSecAln[0], haveSecAln[1], mmover5, mmover10, mmover20, mmover40, maxNH, concPairs, discPairs,
 	discPairsHuman, discPairsRat, discPairsHumanRat, humanOnly[0],humanOnlyMM[0], humanOnly[1], humanOnlyMM[1],
-	humanOnlyPairs,humanOnlyPairsMM, ratOnly[0], ratOnlyMM[0], ratOnly[1], ratOnlyMM[1], ratOnlyPairs, ratOnlyPairsMM,
+	humanOnlyPairs, humanOnlyPairsMM, ratOnly[0], ratOnlyMM[0], ratOnly[1], ratOnlyMM[1], ratOnlyPairs, ratOnlyPairsMM,
 	HumanRat[0], HumanRat[1], HumanRatPairs, betterHuman[0], betterHuman[1], betterHumanPairs,
 	betterRat[0], betterRat[1], betterRatPairs );
    }
@@ -166,7 +166,7 @@ struct TPairData {
 	int maxHscore[2]={INT_MIN, INT_MIN};
 	int maxRscore[2]={INT_MIN, INT_MIN};
 	bool newrec[2]={true,true};
-	bool discordant=true;
+	bool discordant=false;
 };
 
 
@@ -174,8 +174,14 @@ void flushPairData(TPairData& rdata, TAlnStats& stats) {
 	 int both[2]={0,0}; // 0 =  Human xor Rat, 1 = both Human & Rat, same score
 	                    // 2 = human > rat, -1 = rat > human
 	 for (int m=0;m<2;m++) {
-	    if (!rdata.hasHuman[m]) stats.ratOnly[m]++;
-	    if (!rdata.hasRat[m]) stats.humanOnly[m]++;
+	    if (!rdata.hasHuman[m]) {
+	    	stats.ratOnly[m]++;
+	    	if (rdata.maxNH[m]>1) stats.ratOnlyMM[m]++;
+	    }
+	    if (!rdata.hasRat[m]) {
+	    	stats.humanOnly[m]++;
+	    	if (rdata.maxNH[m]>1) stats.humanOnlyMM[m]++;
+	    }
 	    if (rdata.hasHuman[m] && rdata.hasRat[m]) {
 	    	both[m]=1;
 	    	if (rdata.maxHscore[m]==rdata.maxRscore[m]) {
@@ -192,17 +198,22 @@ void flushPairData(TPairData& rdata, TAlnStats& stats) {
 	    	}
 	    }
 	 }
+	 rdata.maxNHPair=GMAX(rdata.maxNH[0], rdata.maxNH[1]);
 	 if (both[0]==both[1]) {
 		if (both[0]==0) {
-		 				if (rdata.hasHuman[0]) stats.humanOnlyPairs++;
-		 				                  else stats.ratOnlyPairs++;
+		 				if (rdata.hasHuman[0]) {
+		 					stats.humanOnlyPairs++;
+		 					if (rdata.maxNHPair>1) stats.humanOnlyPairsMM++;
+		 				} else {
+		 					stats.ratOnlyPairs++;
+		 					if (rdata.maxNHPair>1) stats.ratOnlyPairsMM++;
+		 				}
 		} else if (both[0]==1) {
 			stats.HumanRatPairs++;
 		} else if (both[0]==2) stats.betterHumanPairs++;
 		                  else stats.betterRatPairs++; //both = -1
 
 	 }
-	 rdata.maxNHPair=GMAX(rdata.maxNH[0], rdata.maxNH[1]);
 	 if (rdata.maxNH[0]==1) stats.uniqAligned[0]++;
 	 else if (rdata.maxNH[0]>1)  stats.multiMapped[0]++;
 	 if (rdata.maxNH[1]==1) stats.uniqAligned[1]++;
@@ -266,11 +277,19 @@ void statsHumanRat(GSamReader& samreader, FILE* fout) {
      rdata.numaln[mate]++;
      stats.totalAlignments++;
      if (rdata.numaln[0]==1 && rdata.numaln[1]==1) {
-    	//both mates have an alignment
+    	//this is the first paired alignment for this read pair
     	rdata.pair_aligned=true;
 	    stats.numAlignedPairs++;
         if (strcmp(yt, "CP")==0) stats.concPairs++;
-        else if (strcmp(yt, "DP")==0) stats.discPairs++;
+        else if (strcmp(yt, "DP")==0) {
+        	stats.discPairs++;
+        	rdata.discordant=true;
+        	if (rdata.hasHuman[0] && rdata.hasHuman[1]) {
+        		stats.discPairsHuman++;
+        	} else if (rdata.hasRat[0] && rdata.hasRat[1]) {
+        		stats.discPairsRat++;
+        	} else stats.discPairsHumanRat++;
+        }
      }
 	 if (rdata.newrec[mate]) {
 		 stats.totalReads++;
