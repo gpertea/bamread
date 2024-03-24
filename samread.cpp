@@ -3,9 +3,55 @@
 #include "GStr.h"
 #include "GHashMap.hh"
 
-const char* USAGE="Usage:\n samread [--sam|--S|--bam|-B|--fasta|-F|--fastq|-Q|--gff|-G] \n\
-   [--ref|-r <ref.fa>] [-A|--all] [--table|-T] [-Y] [--human-rat] [--nstrand] \n\
-   [-o <outfile>] <in.bam>|<in.sam> ..\n";
+/* const char* USAGE="Usage:\n samread [--sam|-S|-B|-U|--fasta|-F|--fastq|-Q|--gff|-G]\n\
+   [--ref|-r <ref.fa>] [--best] [-A|--all] [--table|-T] [-Y] [--human-rat] [--nstrand] \n\   
+   [-o <outfile>] <in.bam>|<in.sam> ..\n"; */
+
+const char* USAGE = R"TXT(
+Usage:
+ samread [--sam|-S|--bam|-B|--fasta|-F|--fastq|-Q|--gff|-G] [--ref|-r <ref.fa>]
+   [--best] [-A|--all] [--table|-T] [-Y] [--human-rat] [--nstrand]
+   [-o <outfile>] <in.bam>|<in.sam> ..
+
+Options:
+  --sam,-S          Output alignments in SAM format
+  --bam,-B          Output alignments in BAM format
+  --fasta,-F        Output sequences in FASTA format
+  --fastq,-Q        Output sequences in FASTQ format
+  --gff,-G          Output annotations in GFF format
+  --ref,-r <ref.fa> Use the specified FASTA file as reference for CRAM input
+  --best            outputs only the 'best' alignments for each read that have
+                    the highest alignment score (AS tag). Also adds adds a YH
+                    tag to each output alignment indicating the number
+                    of 'best' alignments (only if it differs from NH tag value)
+  -A|--all          include unmapped reads in the output (ignored in some formats)
+  --table|-T        Output alignments in a tab-delimited table format
+  -Y                add the TieBrush YC tag
+  --human-rat       collect per-genome alignment summary for dual genome human+rat
+                    alignments (human iPSC cultures on rat astrocytes)
+  --nstrand         enforce neutral ('.') strand for unspliced alignments in 
+                    table output (override the transcription strand information)
+                    processed or filtered based on strand-specific information
+  -o <outfile>      specify the output file, instead of default stdout
+
+Description:
+  'samread' is a utility for processing and converting alignment files. It supports
+  multiple input and output formats, including SAM, BAM, FASTA, FASTQ, and GFF. Users
+  can filter alignments, extract sequences, and perform format conversions. The tool
+  is designed to work with genomic data, offering various options to customize the
+  output according to research needs.
+
+Examples:
+  samread --bam -o filtered.bam --best in.bam
+    Filters the input 'in.bam' to output only the best alignments for each read into
+    'filtered.bam' in BAM format.
+
+  samread --fasta -A -o sequences.fasta in.bam
+    Extracts all sequences from 'in.bam' and outputs them in FASTA format to
+    'sequences.fasta', including non-primary alignments.
+
+)TXT";
+
 /*
  TODO: Recognized fields for the --table output option:\n\
   SAM columns: @qname, @flag, @rname, @pos, @mapg, @cigar, @rnext, @pnext,\n\
@@ -25,13 +71,15 @@ enum OutType {
   outGFF,
   outTable,
   outSAM,
-  outHumanRat // don't ask..
+  outHumanRat // alignments vs dual-genome, output per-genome stats
 };
 
 OutType out_type=outFASTQ;
 bool all_reads=false; //including unmapped
 bool addYC=false;
 bool nstrand=false; //--nstrand enforce '.' strand for unspliced alignments
+bool bestAlns=false; // --best, only keep highest score
+
 GSamWriter* samwriter=NULL;
 
 GHash<int> rnames;
@@ -350,7 +398,7 @@ void showSAM(GSamRecord& rec) {
 }
 
 int main(int argc, char *argv[])  {
-    GArgs args(argc, argv, "fasta;fastq;sam;nstrand;bam;gff;all;table;human-rat;help;ref="
+    GArgs args(argc, argv, "fasta;fastq;sam;nstrand;bam;gff;all;table;human-rat;help;best;ref="
         "hBAFTSGYaqo:r:");
     args.printError(USAGE, true);
     bool outBAM=false;
@@ -382,7 +430,9 @@ int main(int argc, char *argv[])  {
     } else if (args.getOpt("human-rat")) {
     	out_type=outHumanRat;
     }
-
+    if (args.getOpt("best")) {
+      bestAlns=true;
+    }
     char* cram_ref=NULL;
     cram_ref=args.getOpt('r');
     if (cram_ref==NULL) cram_ref=args.getOpt("ref");
