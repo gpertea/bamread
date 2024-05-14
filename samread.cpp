@@ -3,7 +3,7 @@
 #include "GStr.h"
 #include "GHashMap.hh"
 
-/* const char* USAGE="Usage:\n samread [--sam|-S|-B|-U|--fasta|-F|--fastq|-Q|--gff|-G]\n\
+/* const char* USAGE="Usage:\n samread [--bundle] [--sam|-S|-B|-U|--fasta|-F|--fastq|-Q|--gff|-G]\n\
    [--ref|-r <ref.fa>] [--best] [-A|--all] [--table|-T] [-Y] [--human-rat] [--nstrand] \n\   
    [-o <outfile>] <in.bam>|<in.sam> ..\n"; */
 
@@ -53,6 +53,7 @@ Examples:
 )TXT";
 
 /*
+ 
  TODO: Recognized fields for the --table output option:\n\
   SAM columns: @qname, @flag, @rname, @pos, @mapg, @cigar, @rnext, @pnext,\n\
                @tlen ,@seq, @qual, @aux\n\
@@ -475,6 +476,7 @@ int main(int argc, char *argv[])  {
 		   samwriter=new GSamWriter(outfname, samreader.header(), st);
 		   writerCreated=true;
 		}
+        //bool isSorted=samreader.isSortedByCoordinate();
 
 		GSamRecord aln;
 		if (out_type==outFASTA) {

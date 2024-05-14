@@ -414,6 +414,22 @@ class GSamReader {
         hts_file=NULL;
         }
     }
+    // Function to check if the file is sorted by coordinate
+    bool isSortedByCoordinate() {
+        if (!hdr) return false;
+        if (hdr != NULL) {
+        kstring_t ks = KS_INITIALIZE;
+        if (sam_hdr_find_tag_hd(hdr, "SO", &ks) >= 0) {
+            GMessage("SO tag found: %s\n", ks_str(&ks));
+            if (strcmp(ks_str(&ks), "coordinate") == 0) {
+                ks_free(&ks);
+                return true;
+            }
+        }
+        ks_free(&ks);
+    }
+    return false;
+    }
 
    ~GSamReader() {
       if (b_next) bam_destroy1(b_next);
